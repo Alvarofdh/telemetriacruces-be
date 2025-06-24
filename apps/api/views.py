@@ -112,7 +112,7 @@ def login_view(request):
     """
     serializer = LoginSerializer(data=request.data)
     if serializer.is_valid():
-        user = serializer.validated_data['user']
+        user = serializer.validated_data['user']  # type: ignore
         refresh = RefreshToken.for_user(user)
         
         return Response({
