@@ -1,0 +1,10 @@
+# Configuración de Base de Datos PostgreSQL
+DB_NAME=cruces_ferroviarios
+DB_USER=postgres
+DB_PASSWORD=postgres
+DB_HOST=localhost
+DB_PORT=5432
+
+# Configuración de Django
+SECRET_KEY=tu_secret_key_aqui
+DEBUG=True 
