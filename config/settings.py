@@ -20,6 +20,9 @@ DEBUG = os.getenv('DEBUG', 'True').lower() == 'true'
 
 ALLOWED_HOSTS = []
 
+# Configuración de URLs
+APPEND_SLASH = True  # Agrega automáticamente / al final de URLs
+
 
 # Application definition
 

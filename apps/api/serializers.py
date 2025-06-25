@@ -39,22 +39,49 @@ class LoginSerializer(serializers.Serializer):
         return attrs
 
 class RegisterSerializer(serializers.ModelSerializer):
-    """Serializer para registro de usuarios"""
+    """Serializer para registro de usuarios con email"""
+    email = serializers.EmailField(required=True)
     password = serializers.CharField(write_only=True, min_length=8)
     password_confirm = serializers.CharField(write_only=True)
+    first_name = serializers.CharField(required=False, allow_blank=True)
+    last_name = serializers.CharField(required=False, allow_blank=True)
 
     class Meta:
         model = User
-        fields = ('username', 'email', 'password', 'password_confirm', 'first_name', 'last_name')
+        fields = ('email', 'password', 'password_confirm', 'first_name', 'last_name')
 
     def validate(self, attrs):
         if attrs['password'] != attrs['password_confirm']:
             raise serializers.ValidationError("Las contraseñas no coinciden")
+        
+        # Verificar que el email no esté en uso
+        if User.objects.filter(email=attrs['email']).exists():
+            raise serializers.ValidationError("Este email ya está registrado")
+        
         return attrs
 
     def create(self, validated_data):
         validated_data.pop('password_confirm')
-        user = User.objects.create_user(**validated_data)
+        
+        # Generar username desde el email
+        email = validated_data['email']
+        username = email.split('@')[0]  # Tomar la parte antes del @
+        
+        # Si el username ya existe, agregar números
+        base_username = username
+        counter = 1
+        while User.objects.filter(username=username).exists():
+            username = f"{base_username}{counter}"
+            counter += 1
+        
+        # Crear usuario con username generado
+        user = User.objects.create_user(
+            username=username,
+            email=validated_data['email'],
+            password=validated_data['password'],
+            first_name=validated_data.get('first_name', ''),
+            last_name=validated_data.get('last_name', '')
+        )
         return user
 
 class TokenSerializer(serializers.Serializer):

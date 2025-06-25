@@ -20,9 +20,9 @@ from .serializers import LoginSerializer, RegisterSerializer, UserSerializer, To
             description="Lista de endpoints disponibles",
             examples={
                 "application/json": {
-                    "api_root": "/api/",
-                    "health_check": "/api/health/",
-                    "login": "/api/login/",
+                    "api_root": "/api",
+                    "health_check": "/api/health",
+                    "login": "/api/login",
                     "swagger": "/swagger/",
                     "admin": "/admin/"
                 }
@@ -72,6 +72,8 @@ def health_check(request, format=None):
     Endpoint de verificación de salud de la API.
     
     Permite verificar que la API está funcionando correctamente.
+    
+    URL: GET /api/health
     """
     from django.utils import timezone
     
@@ -109,6 +111,8 @@ def login_view(request):
     Endpoint para iniciar sesión con email.
     
     Recibe email y password, devuelve tokens JWT para autenticación.
+    
+    URL: POST /api/login
     """
     serializer = LoginSerializer(data=request.data)
     if serializer.is_valid():
@@ -149,6 +153,8 @@ def logout_view(request):
     Endpoint para cerrar sesión.
     
     Invalida el token actual del usuario.
+    
+    URL: POST /api/logout
     """
     try:
         refresh_token = request.data.get('refresh_token')
@@ -169,7 +175,7 @@ def logout_view(request):
 @swagger_auto_schema(
     method='post',
     request_body=RegisterSerializer,
-    operation_description="Registrar nuevo usuario",
+    operation_description="Registrar nuevo usuario con email (username se genera automáticamente)",
     responses={
         201: openapi.Response(
             description="Usuario creado exitosamente",
@@ -191,7 +197,19 @@ def register_view(request):
     """
     Endpoint para registrar nuevos usuarios.
     
-    Crea un nuevo usuario en el sistema.
+    Crea un nuevo usuario en el sistema usando email.
+    El username se genera automáticamente desde el email.
+    
+    URL: POST /api/register
+    
+    Campos requeridos:
+    - email: Email del usuario
+    - password: Contraseña (mínimo 8 caracteres)
+    - password_confirm: Confirmación de contraseña
+    
+    Campos opcionales:
+    - first_name: Nombre del usuario
+    - last_name: Apellido del usuario
     """
     serializer = RegisterSerializer(data=request.data)
     if serializer.is_valid():
@@ -232,6 +250,8 @@ def profile_view(request):
     Endpoint para obtener el perfil del usuario autenticado.
     
     Requiere autenticación con token JWT.
+    
+    URL: GET /api/profile
     """
     return Response({
         'user': UserSerializer(request.user).data,
