@@ -1,5 +1,6 @@
 # Create your models here.
 from django.db import models
+from django.utils import timezone
 
 
 class ApiAlerta(models.Model):
@@ -85,26 +86,43 @@ class AuthUserUserPermissions(models.Model):
 
 
 class BarrierEvent(models.Model):
-    id_evento = models.BigAutoField(primary_key=True)
-    sensor = models.ForeignKey('Sensor', models.DO_NOTHING)
-    telemetria = models.ForeignKey('Telemetria', models.DO_NOTHING, blank=True, null=True)
-    evento = models.CharField(max_length=4)
-    ts_evento = models.DateTimeField()
+    """Eventos de cambio de estado de barrera"""
+    STATE_CHOICES = [
+        ('DOWN', 'Barrera Abajo'),
+        ('UP', 'Barrera Arriba'),
+    ]
+    
+    telemetria = models.ForeignKey('Telemetria', on_delete=models.CASCADE, related_name='barrier_events')
+    cruce = models.ForeignKey('Cruce', on_delete=models.CASCADE, related_name='barrier_events')
+    state = models.CharField(max_length=4, choices=STATE_CHOICES)
+    event_time = models.DateTimeField()
+    voltage_at_event = models.FloatField()  # Voltaje en el momento del evento
+    
+    def __str__(self):
+        return f"Evento {self.cruce.nombre} - {self.state} - {self.event_time}"
 
     class Meta:
-        managed = False
-        db_table = 'barrier_event'
+        verbose_name = "Evento de Barrera"
+        verbose_name_plural = "Eventos de Barrera"
+        ordering = ['-event_time']
 
 
 class Cruce(models.Model):
-    id_cruce = models.AutoField(primary_key=True)
-    nombre = models.CharField(max_length=255)
-    ubicacion = models.CharField(max_length=255)
-    estado = models.CharField(max_length=20)
+    """Modelo para los cruces ferroviarios"""
+    nombre = models.CharField(max_length=100)
+    ubicacion = models.CharField(max_length=200)
+    coordenadas_lat = models.FloatField(null=True, blank=True)
+    coordenadas_lng = models.FloatField(null=True, blank=True)
+    estado = models.CharField(max_length=20, default='ACTIVO')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.nombre} - {self.ubicacion}"
 
     class Meta:
-        managed = False
-        db_table = 'cruce'
+        verbose_name = "Cruce"
+        verbose_name_plural = "Cruces"
 
 
 class DjangoAdminLog(models.Model):
@@ -153,25 +171,90 @@ class DjangoSession(models.Model):
 
 
 class Sensor(models.Model):
-    id_sensor = models.AutoField(primary_key=True)
-    id_cruce = models.OneToOneField(Cruce, models.DO_NOTHING, db_column='id_cruce')
-    mac_address = models.CharField(unique=True, max_length=17)
-    installed_at = models.DateTimeField()
+    """Modelo para los sensores del sistema"""
+    SENSOR_TYPES = [
+        ('BARRERA', 'Sensor de Barrera'),
+        ('GABINETE', 'Sensor de Gabinete'),
+        ('BATERIA', 'Sensor de Batería'),
+        ('PLC', 'Sensor PLC'),
+        ('TEMPERATURA', 'Sensor de Temperatura'),
+    ]
+    
+    nombre = models.CharField(max_length=100)
+    tipo = models.CharField(max_length=20, choices=SENSOR_TYPES)
+    cruce = models.ForeignKey(Cruce, on_delete=models.CASCADE, related_name='sensores')
+    descripcion = models.TextField(blank=True)
+    activo = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.nombre} - {self.get_tipo_display()} - {self.cruce.nombre}"
 
     class Meta:
-        managed = False
-        db_table = 'sensor'
+        verbose_name = "Sensor"
+        verbose_name_plural = "Sensores"
 
 
 class Telemetria(models.Model):
-    id_telemetria = models.BigAutoField(primary_key=True)
-    sensor = models.ForeignKey(Sensor, models.DO_NOTHING)
-    ts = models.DateTimeField()
-    nivel_bateria = models.FloatField()
-    voltaje = models.FloatField()
-    estado_barrera = models.BooleanField()
-    gabinete_abierto = models.BooleanField()
+    """Modelo principal para las lecturas del ESP32"""
+    cruce = models.ForeignKey(Cruce, on_delete=models.CASCADE, related_name='telemetrias')
+    timestamp = models.DateTimeField(auto_now_add=True)
+    
+    # Voltajes principales
+    barrier_voltage = models.FloatField()  # Voltaje de barrera del PLC (0-24V)
+    battery_voltage = models.FloatField()  # Voltaje de batería (10-15V)
+    
+    # Sensores adicionales
+    sensor_1 = models.IntegerField(null=True, blank=True)  # Sensores adicionales
+    sensor_2 = models.IntegerField(null=True, blank=True)
+    sensor_3 = models.IntegerField(null=True, blank=True)
+    sensor_4 = models.IntegerField(null=True, blank=True)
+    
+    # Estado de la barrera (calculado automáticamente)
+    barrier_status = models.CharField(max_length=4, choices=[
+        ('UP', 'Barrera Arriba'),
+        ('DOWN', 'Barrera Abajo'),
+    ], null=True, blank=True)
+    
+    # Información adicional del ESP32
+    signal_strength = models.IntegerField(null=True, blank=True)  # RSSI
+    temperature = models.FloatField(null=True, blank=True)
+    
+    def __str__(self):
+        return f"Telemetría {self.cruce.nombre} - {self.timestamp}"
 
     class Meta:
-        managed = False
-        db_table = 'telemetria'
+        verbose_name = "Telemetría"
+        verbose_name_plural = "Telemetrías"
+        ordering = ['-timestamp']
+
+
+class Alerta(models.Model):
+    """Alertas automáticas del sistema"""
+    ALERT_TYPES = [
+        ('LOW_BATTERY', 'Batería Baja'),
+        ('SENSOR_ERROR', 'Error de Sensor'),
+        ('BARRIER_STUCK', 'Barrera Bloqueada'),
+        ('VOLTAGE_CRITICAL', 'Voltaje Crítico'),
+        ('COMMUNICATION_LOST', 'Comunicación Perdida'),
+        ('GABINETE_ABIERTO', 'Gabinete Abierto'),
+    ]
+    
+    type = models.CharField(max_length=20, choices=ALERT_TYPES)
+    description = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    resolved = models.BooleanField(default=False)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    
+    # Relaciones
+    telemetria = models.ForeignKey(Telemetria, on_delete=models.SET_NULL, null=True, blank=True, related_name='alertas')
+    cruce = models.ForeignKey(Cruce, on_delete=models.CASCADE, related_name='alertas')
+    sensor = models.ForeignKey(Sensor, on_delete=models.SET_NULL, null=True, blank=True, related_name='alertas')
+    
+    def __str__(self):
+        return f"Alerta {self.get_type_display()} - {self.cruce.nombre} - {self.created_at}"
+
+    class Meta:
+        verbose_name = "Alerta"
+        verbose_name_plural = "Alertas"
+        ordering = ['-created_at']

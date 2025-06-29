@@ -3,6 +3,7 @@ from django.contrib.auth.models import User
 from django.contrib.auth import authenticate
 from django.core.exceptions import ObjectDoesNotExist
 from rest_framework_simplejwt.tokens import RefreshToken
+from .models import Telemetria, Cruce, Sensor, BarrierEvent, Alerta
 
 class UserSerializer(serializers.ModelSerializer):
     """Serializer para el modelo User de Django"""
@@ -88,4 +89,98 @@ class TokenSerializer(serializers.Serializer):
     """Serializer para tokens JWT"""
     access = serializers.CharField()
     refresh = serializers.CharField()
-    user = UserSerializer() 
+    user = UserSerializer()
+
+# Serializers para el sistema de cruces ferroviarios
+
+class CruceSerializer(serializers.ModelSerializer):
+    """Serializer para el modelo Cruce"""
+    class Meta:
+        model = Cruce
+        fields = '__all__'
+        read_only_fields = ('created_at', 'updated_at')
+
+class SensorSerializer(serializers.ModelSerializer):
+    """Serializer para el modelo Sensor"""
+    cruce_nombre = serializers.CharField(source='cruce.nombre', read_only=True)
+    
+    class Meta:
+        model = Sensor
+        fields = '__all__'
+        read_only_fields = ('created_at',)
+
+class TelemetriaSerializer(serializers.ModelSerializer):
+    """Serializer para el modelo Telemetria con validaciones específicas"""
+    cruce_nombre = serializers.CharField(source='cruce.nombre', read_only=True)
+    
+    class Meta:
+        model = Telemetria
+        fields = '__all__'
+        read_only_fields = ('timestamp', 'barrier_status')
+
+    def validate_barrier_voltage(self, value):
+        """Validar rango de voltaje de barrera (0-24V)"""
+        if value < 0 or value > 24:
+            raise serializers.ValidationError("El voltaje de barrera debe estar entre 0V y 24V")
+        return value
+
+    def validate_battery_voltage(self, value):
+        """Validar rango de voltaje de batería (10-15V)"""
+        if value < 10 or value > 15:
+            raise serializers.ValidationError("El voltaje de batería debe estar entre 10V y 15V")
+        return value
+
+    def validate_sensor_1(self, value):
+        """Validar rango de sensor ADC (0-1023)"""
+        if value is not None and (value < 0 or value > 1023):
+            raise serializers.ValidationError("El valor del sensor debe estar entre 0 y 1023")
+        return value
+
+    def validate_sensor_2(self, value):
+        """Validar rango de sensor ADC (0-1023)"""
+        if value is not None and (value < 0 or value > 1023):
+            raise serializers.ValidationError("El valor del sensor debe estar entre 0 y 1023")
+        return value
+
+    def validate_sensor_3(self, value):
+        """Validar rango de sensor ADC (0-1023)"""
+        if value is not None and (value < 0 or value > 1023):
+            raise serializers.ValidationError("El valor del sensor debe estar entre 0 y 1023")
+        return value
+
+    def validate_sensor_4(self, value):
+        """Validar rango de sensor ADC (0-1023)"""
+        if value is not None and (value < 0 or value > 1023):
+            raise serializers.ValidationError("El valor del sensor debe estar entre 0 y 1023")
+        return value
+
+class BarrierEventSerializer(serializers.ModelSerializer):
+    """Serializer para el modelo BarrierEvent"""
+    cruce_nombre = serializers.CharField(source='cruce.nombre', read_only=True)
+    
+    class Meta:
+        model = BarrierEvent
+        fields = '__all__'
+
+    def validate_event_time(self, value):
+        """Validar que el evento no sea en el futuro"""
+        from django.utils import timezone
+        if value > timezone.now():
+            raise serializers.ValidationError("El evento no puede ser en el futuro")
+        return value
+
+class AlertaSerializer(serializers.ModelSerializer):
+    """Serializer para el modelo Alerta"""
+    cruce_nombre = serializers.CharField(source='cruce.nombre', read_only=True)
+    type_display = serializers.CharField(source='get_type_display', read_only=True)
+    
+    class Meta:
+        model = Alerta
+        fields = '__all__'
+        read_only_fields = ('created_at', 'resolved_at')
+
+    def validate_description(self, value):
+        """Validar que la descripción no esté vacía"""
+        if not value.strip():
+            raise serializers.ValidationError("La descripción no puede estar vacía")
+        return value 
