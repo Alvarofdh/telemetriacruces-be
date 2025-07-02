@@ -173,20 +173,3 @@ telemetriacruces-be-main/
 ├── .cursor-rules/     # Reglas del proyecto
 └── requirements.txt   # Dependencias
 ```
-
-## 🤝 Contribución
-
-1. Fork el proyecto
-2. Crear rama feature (`git checkout -b feature/AmazingFeature`)
-3. Commit cambios (`git commit -m 'Add AmazingFeature'`)
-4. Push a la rama (`git push origin feature/AmazingFeature`)
-5. Abrir Pull Request
-
-## 📄 Licencia
-
-Este proyecto está bajo la Licencia MIT. Ver `LICENSE` para más detalles.
-
-## 📞 Contacto
-
-- Email: contact@crucesferroviarios.com
-- Proyecto: [URL del repositorio]
