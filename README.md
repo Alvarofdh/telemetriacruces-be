@@ -289,6 +289,7 @@ telemetriacruces-be/
 ├── manage.py                # Script de gestión Django
 └── README.md               # Este archivo
 ```
+<<<<<<< HEAD
 
 ## 🔧 Lógica de Negocio
 
@@ -372,3 +373,5 @@ Este proyecto está bajo la Licencia MIT. Ver el archivo `LICENSE` para más det
 ---
 
 **¡Gracias por usar el Sistema de Monitoreo de Cruces Ferroviarios!** 🚂✨
+=======
+>>>>>>> a67ff19a0eac98e8f31b416a5495349d10147df5
