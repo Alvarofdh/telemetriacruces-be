@@ -11,12 +11,17 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate, login, logout
 from django.utils import timezone
 from django.db.models import Q
+from django.conf import settings
+import logging
 from .serializers import (
     LoginSerializer, RegisterSerializer, UserSerializer, TokenSerializer,
     TelemetriaSerializer, CruceSerializer, SensorSerializer, 
-    BarrierEventSerializer, AlertaSerializer
+    BarrierEventSerializer, AlertaSerializer, ESP32TelemetriaSerializer
 )
 from .models import Telemetria, Cruce, Sensor, BarrierEvent, Alerta
+
+# Configurar logging
+logger = logging.getLogger(__name__)
 
 # Create your views here.
 
@@ -57,6 +62,7 @@ def api_root(request, format=None):
         'telemetria': reverse('api:telemetria-list', request=request, format=format),
         'cruces': reverse('api:cruce-list', request=request, format=format),
         'alertas': reverse('api:alerta-list', request=request, format=format),
+        'esp32_telemetria': reverse('api:esp32-telemetria', request=request, format=format),
         'swagger': '/swagger/',
         'admin': '/admin/',
         'message': 'API de Monitoreo de Cruces Ferroviarios - Backend operativo'
@@ -269,6 +275,144 @@ def profile_view(request):
         'user': UserSerializer(request.user).data,
         'message': 'Perfil obtenido exitosamente'
     }, status=status.HTTP_200_OK)
+
+
+# Endpoint público para ESP32 (sin autenticación JWT)
+
+@swagger_auto_schema(
+    method='post',
+    request_body=ESP32TelemetriaSerializer,
+    operation_description="Endpoint público para ESP32 - Enviar datos de telemetría sin autenticación JWT",
+    responses={
+        201: openapi.Response(
+            description="Telemetría recibida exitosamente",
+            examples={
+                "application/json": {
+                    "status": "success",
+                    "message": "Datos recibidos correctamente",
+                    "telemetria_id": 123,
+                    "events_created": 1,
+                    "alerts_created": 0
+                }
+            }
+        ),
+        400: openapi.Response(
+            description="Datos inválidos o token incorrecto",
+            examples={
+                "application/json": {
+                    "status": "error",
+                    "message": "Token de ESP32 inválido",
+                    "details": ["Token de ESP32 inválido"]
+                }
+            }
+        )
+    }
+)
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def esp32_telemetria(request):
+    """
+    Endpoint público para ESP32 - Enviar datos de telemetría.
+    
+    Este endpoint NO requiere autenticación JWT, solo un token fijo del ESP32.
+    
+    URL: POST /api/esp32/telemetria
+    
+    Campos requeridos:
+    - esp32_token: Token de autenticación del ESP32
+    - cruce_id: ID del cruce ferroviario
+    - barrier_voltage: Voltaje de barrera (0-24V)
+    - battery_voltage: Voltaje de batería (10-15V)
+    
+    Campos opcionales:
+    - sensor_1/2/3/4: Sensores adicionales (0-1023)
+    - signal_strength: Fuerza de señal WiFi (RSSI)
+    - temperature: Temperatura del gabinete
+    """
+    try:
+        # Validar datos con serializer específico para ESP32
+        serializer = ESP32TelemetriaSerializer(data=request.data)
+        
+        if not serializer.is_valid():
+            logger.warning(f"ESP32 - Datos inválidos: {serializer.errors}")
+            return Response({
+                'status': 'error',
+                'message': 'Datos inválidos',
+                'details': serializer.errors
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Obtener el cruce
+        cruce = Cruce.objects.get(id=serializer.validated_data['cruce_id'])
+        
+        # Crear telemetría
+        telemetria_data = {
+            'cruce': cruce,
+            'barrier_voltage': serializer.validated_data['barrier_voltage'],
+            'battery_voltage': serializer.validated_data['battery_voltage'],
+            'sensor_1': serializer.validated_data.get('sensor_1'),
+            'sensor_2': serializer.validated_data.get('sensor_2'),
+            'sensor_3': serializer.validated_data.get('sensor_3'),
+            'sensor_4': serializer.validated_data.get('sensor_4'),
+            'signal_strength': serializer.validated_data.get('signal_strength'),
+            'temperature': serializer.validated_data.get('temperature'),
+        }
+        
+        telemetria = Telemetria.objects.create(**telemetria_data)
+        
+        # Ejecutar lógica de negocio
+        events_created = 0
+        alerts_created = 0
+        
+        # Detectar eventos de barrera
+        try:
+            detect_barrier_event(telemetria)
+            # Contar eventos creados en los últimos segundos
+            events_created = BarrierEvent.objects.filter(
+                cruce=cruce,
+                event_time__gte=timezone.now() - timezone.timedelta(seconds=5)
+            ).count()
+        except Exception as e:
+            logger.error(f"ESP32 - Error en detección de eventos: {str(e)}")
+        
+        # Verificar alertas
+        try:
+            check_alerts(telemetria)
+            # Contar alertas creadas en los últimos segundos
+            alerts_created = Alerta.objects.filter(
+                cruce=cruce,
+                created_at__gte=timezone.now() - timezone.timedelta(seconds=5)
+            ).count()
+        except Exception as e:
+            logger.error(f"ESP32 - Error en verificación de alertas: {str(e)}")
+        
+        # Log de éxito
+        logger.info(f"ESP32 - Telemetría recibida: Cruce {cruce.nombre}, ID {telemetria.id}, "
+                   f"Barrier: {telemetria.barrier_voltage}V, Battery: {telemetria.battery_voltage}V")
+        
+        return Response({
+            'status': 'success',
+            'message': 'Datos recibidos correctamente',
+            'telemetria_id': telemetria.id,
+            'cruce': cruce.nombre,
+            'timestamp': telemetria.timestamp.isoformat(),
+            'events_created': events_created,
+            'alerts_created': alerts_created
+        }, status=status.HTTP_201_CREATED)
+        
+    except Cruce.DoesNotExist:
+        logger.error(f"ESP32 - Cruce no encontrado: {request.data.get('cruce_id')}")
+        return Response({
+            'status': 'error',
+            'message': 'Cruce no encontrado o inactivo'
+        }, status=status.HTTP_400_BAD_REQUEST)
+        
+    except Exception as e:
+        logger.error(f"ESP32 - Error interno: {str(e)}")
+        return Response({
+            'status': 'error',
+            'message': 'Error interno del servidor',
+            'details': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # Lógica de negocio para detección de eventos y alertas

@@ -23,6 +23,9 @@ urlpatterns = [
     path('register', views.register_view, name='register'),
     path('profile', views.profile_view, name='profile'),
     
+    # Endpoint público para ESP32 (sin autenticación JWT)
+    path('esp32/telemetria', views.esp32_telemetria, name='esp32-telemetria'),
+    
     # Incluir URLs de ViewSets (incluye automáticamente las rutas @action)
     path('', include(router.urls)),
 ] 

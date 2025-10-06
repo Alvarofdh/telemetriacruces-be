@@ -183,4 +183,76 @@ class AlertaSerializer(serializers.ModelSerializer):
         """Validar que la descripción no esté vacía"""
         if not value.strip():
             raise serializers.ValidationError("La descripción no puede estar vacía")
+        return value
+
+
+class ESP32TelemetriaSerializer(serializers.Serializer):
+    """Serializer específico para ESP32 - Sin autenticación JWT"""
+    esp32_token = serializers.CharField(max_length=100, write_only=True)
+    cruce_id = serializers.IntegerField()
+    
+    # Voltajes principales
+    barrier_voltage = serializers.FloatField()
+    battery_voltage = serializers.FloatField()
+    
+    # Sensores adicionales (opcionales)
+    sensor_1 = serializers.IntegerField(required=False, allow_null=True)
+    sensor_2 = serializers.IntegerField(required=False, allow_null=True)
+    sensor_3 = serializers.IntegerField(required=False, allow_null=True)
+    sensor_4 = serializers.IntegerField(required=False, allow_null=True)
+    
+    # Información adicional del ESP32 (opcionales)
+    signal_strength = serializers.IntegerField(required=False, allow_null=True)
+    temperature = serializers.FloatField(required=False, allow_null=True)
+
+    def validate_esp32_token(self, value):
+        """Validar token del ESP32"""
+        from django.conf import settings
+        expected_token = getattr(settings, 'ESP32_TOKEN', 'esp32_default_token_123')
+        if value != expected_token:
+            raise serializers.ValidationError("Token de ESP32 inválido")
+        return value
+
+    def validate_cruce_id(self, value):
+        """Validar que el cruce existe"""
+        try:
+            Cruce.objects.get(id=value, estado='ACTIVO')
+        except Cruce.DoesNotExist:
+            raise serializers.ValidationError("Cruce no encontrado o inactivo")
+        return value
+
+    def validate_barrier_voltage(self, value):
+        """Validar rango de voltaje de barrera (0-24V)"""
+        if value < 0 or value > 24:
+            raise serializers.ValidationError("El voltaje de barrera debe estar entre 0V y 24V")
+        return value
+
+    def validate_battery_voltage(self, value):
+        """Validar rango de voltaje de batería (10-15V)"""
+        if value < 10 or value > 15:
+            raise serializers.ValidationError("El voltaje de batería debe estar entre 10V y 15V")
+        return value
+
+    def validate_sensor_1(self, value):
+        """Validar rango de sensor ADC (0-1023)"""
+        if value is not None and (value < 0 or value > 1023):
+            raise serializers.ValidationError("El valor del sensor debe estar entre 0 y 1023")
+        return value
+
+    def validate_sensor_2(self, value):
+        """Validar rango de sensor ADC (0-1023)"""
+        if value is not None and (value < 0 or value > 1023):
+            raise serializers.ValidationError("El valor del sensor debe estar entre 0 y 1023")
+        return value
+
+    def validate_sensor_3(self, value):
+        """Validar rango de sensor ADC (0-1023)"""
+        if value is not None and (value < 0 or value > 1023):
+            raise serializers.ValidationError("El valor del sensor debe estar entre 0 y 1023")
+        return value
+
+    def validate_sensor_4(self, value):
+        """Validar rango de sensor ADC (0-1023)"""
+        if value is not None and (value < 0 or value > 1023):
+            raise serializers.ValidationError("El valor del sensor debe estar entre 0 y 1023")
         return value 
