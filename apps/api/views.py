@@ -16,9 +16,10 @@ import logging
 from .serializers import (
     LoginSerializer, RegisterSerializer, UserSerializer, TokenSerializer,
     TelemetriaSerializer, CruceSerializer, SensorSerializer, 
-    BarrierEventSerializer, AlertaSerializer, ESP32TelemetriaSerializer
+    BarrierEventSerializer, AlertaSerializer, ESP32TelemetriaSerializer,
+    UserNotificationSettingsSerializer
 )
-from .models import Telemetria, Cruce, Sensor, BarrierEvent, Alerta
+from .models import Telemetria, Cruce, Sensor, BarrierEvent, Alerta, UserNotificationSettings
 
 # Configurar logging
 logger = logging.getLogger(__name__)
@@ -261,20 +262,215 @@ def register_view(request):
         )
     }
 )
-@api_view(['GET'])
+@api_view(['GET', 'PUT'])
 @permission_classes([IsAuthenticated])
 def profile_view(request):
     """
-    Endpoint para obtener el perfil del usuario autenticado.
+    Endpoint para obtener y actualizar el perfil del usuario autenticado.
     
     Requiere autenticación con token JWT.
     
-    URL: GET /api/profile
+    URL: GET /api/profile - Obtener perfil
+    URL: PUT /api/profile - Actualizar perfil
     """
+    if request.method == 'GET':
+        return Response({
+            'user': UserSerializer(request.user).data,
+            'message': 'Perfil obtenido exitosamente'
+        }, status=status.HTTP_200_OK)
+    
+    elif request.method == 'PUT':
+        serializer = UserSerializer(request.user, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({
+                'user': serializer.data,
+                'message': 'Perfil actualizado exitosamente'
+            }, status=status.HTTP_200_OK)
+        
+        return Response({
+            'error': 'Datos inválidos',
+            'details': serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+
+@swagger_auto_schema(
+    method='post',
+    operation_description="Cambiar contraseña del usuario autenticado",
+    request_body=openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        properties={
+            'current_password': openapi.Schema(type=openapi.TYPE_STRING, description='Contraseña actual'),
+            'new_password': openapi.Schema(type=openapi.TYPE_STRING, description='Nueva contraseña'),
+            'confirm_password': openapi.Schema(type=openapi.TYPE_STRING, description='Confirmar nueva contraseña'),
+        },
+        required=['current_password', 'new_password', 'confirm_password']
+    ),
+    responses={
+        200: openapi.Response(
+            description="Contraseña cambiada exitosamente",
+            examples={
+                "application/json": {
+                    "message": "Contraseña cambiada exitosamente"
+                }
+            }
+        ),
+        400: openapi.Response(
+            description="Datos inválidos",
+            examples={
+                "application/json": {
+                    "error": "Contraseña actual incorrecta"
+                }
+            }
+        )
+    }
+)
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def change_password_view(request):
+    """
+    Endpoint para cambiar la contraseña del usuario autenticado.
+    
+    Requiere autenticación con token JWT.
+    
+    URL: POST /api/change-password
+    
+    Campos requeridos:
+    - current_password: Contraseña actual
+    - new_password: Nueva contraseña (mínimo 8 caracteres)
+    - confirm_password: Confirmación de nueva contraseña
+    """
+    current_password = request.data.get('current_password')
+    new_password = request.data.get('new_password')
+    confirm_password = request.data.get('confirm_password')
+    
+    # Validar campos requeridos
+    if not all([current_password, new_password, confirm_password]):
+        return Response({
+            'error': 'Todos los campos son requeridos'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Validar que las contraseñas coincidan
+    if new_password != confirm_password:
+        return Response({
+            'error': 'Las contraseñas nuevas no coinciden'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Validar longitud mínima
+    if len(new_password) < 8:
+        return Response({
+            'error': 'La nueva contraseña debe tener al menos 8 caracteres'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Verificar contraseña actual
+    if not request.user.check_password(current_password):
+        return Response({
+            'error': 'Contraseña actual incorrecta'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Cambiar contraseña
+    request.user.set_password(new_password)
+    request.user.save()
+    
     return Response({
-        'user': UserSerializer(request.user).data,
-        'message': 'Perfil obtenido exitosamente'
+        'message': 'Contraseña cambiada exitosamente'
     }, status=status.HTTP_200_OK)
+
+
+@swagger_auto_schema(
+    method='get',
+    operation_description="Obtener configuración de notificaciones del usuario",
+    responses={
+        200: openapi.Response(
+            description="Configuración de notificaciones",
+            schema=UserNotificationSettingsSerializer
+        ),
+        404: openapi.Response(
+            description="Configuración no encontrada",
+            examples={
+                "application/json": {
+                    "error": "Configuración de notificaciones no encontrada"
+                }
+            }
+        )
+    }
+)
+@swagger_auto_schema(
+    method='put',
+    request_body=UserNotificationSettingsSerializer,
+    operation_description="Actualizar configuración de notificaciones del usuario",
+    responses={
+        200: openapi.Response(
+            description="Configuración actualizada exitosamente",
+            schema=UserNotificationSettingsSerializer
+        ),
+        400: openapi.Response(
+            description="Datos inválidos",
+            examples={
+                "application/json": {
+                    "error": "Datos inválidos"
+                }
+            }
+        )
+    }
+)
+@api_view(['GET', 'PUT'])
+@permission_classes([IsAuthenticated])
+def notification_settings_view(request):
+    """
+    Endpoint para obtener y actualizar configuración de notificaciones del usuario.
+    
+    Requiere autenticación con token JWT.
+    
+    URL: GET /api/notification-settings - Obtener configuración
+    URL: PUT /api/notification-settings - Actualizar configuración
+    """
+    try:
+        # Obtener o crear configuración de notificaciones
+        settings_obj, created = UserNotificationSettings.objects.get_or_create(
+            user=request.user,
+            defaults={
+                'enable_notifications': True,
+                'enable_push_notifications': True,
+                'enable_email_notifications': False,
+                'notify_critical_alerts': True,
+                'notify_warning_alerts': True,
+                'notify_info_alerts': False,
+                'notify_barrier_events': True,
+                'notify_battery_low': True,
+                'notify_communication_lost': True,
+                'notify_gabinete_open': True,
+                'notification_frequency': 'IMMEDIATE'
+            }
+        )
+        
+        if request.method == 'GET':
+            serializer = UserNotificationSettingsSerializer(settings_obj)
+            return Response({
+                'settings': serializer.data,
+                'message': 'Configuración obtenida exitosamente'
+            }, status=status.HTTP_200_OK)
+        
+        elif request.method == 'PUT':
+            serializer = UserNotificationSettingsSerializer(settings_obj, data=request.data, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+                return Response({
+                    'settings': serializer.data,
+                    'message': 'Configuración actualizada exitosamente'
+                }, status=status.HTTP_200_OK)
+            
+            return Response({
+                'error': 'Datos inválidos',
+                'details': serializer.errors
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+    except Exception as e:
+        logger.error(f"Error en configuración de notificaciones: {str(e)}")
+        return Response({
+            'error': 'Error interno del servidor',
+            'details': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # Endpoint público para ESP32 (sin autenticación JWT)
@@ -456,43 +652,59 @@ def check_alerts(telemetria_instance):
     """
     Verifica y crea alertas automáticas basadas en la telemetría
     """
-    # Alerta por batería baja
+    # Alerta por batería baja - CRÍTICA
     if telemetria_instance.battery_voltage < 11.0:
         Alerta.objects.get_or_create(
             type='LOW_BATTERY',
             cruce=telemetria_instance.cruce,
             telemetria=telemetria_instance,
             defaults={
+                'severity': 'CRITICAL',
                 'description': f'Batería baja en cruce {telemetria_instance.cruce.nombre}. '
                               f'Voltaje actual: {telemetria_instance.battery_voltage}V',
                 'resolved': False
             }
         )
     
-    # Alerta por voltaje crítico del PLC
+    # Alerta por voltaje crítico del PLC - CRÍTICA
     if telemetria_instance.barrier_voltage < 20.0:
         Alerta.objects.get_or_create(
             type='VOLTAGE_CRITICAL',
             cruce=telemetria_instance.cruce,
             telemetria=telemetria_instance,
             defaults={
+                'severity': 'CRITICAL',
                 'description': f'Voltaje crítico del PLC en cruce {telemetria_instance.cruce.nombre}. '
                               f'Voltaje actual: {telemetria_instance.barrier_voltage}V',
                 'resolved': False
             }
         )
     
-    # Alerta por gabinete abierto (sensor_1 > 500)
+    # Alerta por gabinete abierto (sensor_1 > 500) - ADVERTENCIA
     if telemetria_instance.sensor_1 and telemetria_instance.sensor_1 > 500:
         Alerta.objects.get_or_create(
             type='GABINETE_ABIERTO',
             cruce=telemetria_instance.cruce,
             telemetria=telemetria_instance,
             defaults={
+                'severity': 'WARNING',
                 'description': f'Gabinete abierto en cruce {telemetria_instance.cruce.nombre}',
                 'resolved': False
             }
         )
+    
+    # Alerta por comunicación perdida - CRÍTICA
+    # (Se puede implementar si no hay telemetría en X tiempo)
+    # if ultima_telemetria > 1 hora:
+    #     Alerta.objects.get_or_create(
+    #         type='COMMUNICATION_LOST',
+    #         cruce=telemetria_instance.cruce,
+    #         defaults={
+    #             'severity': 'CRITICAL',
+    #             'description': f'Comunicación perdida con cruce {telemetria_instance.cruce.nombre}',
+    #             'resolved': False
+    #         }
+    #     )
 
 
 # ViewSets para los modelos principales
@@ -693,6 +905,51 @@ class CruceViewSet(ModelViewSet):
             'total_alertas_activas': sum(c['alertas_activas'] for c in dashboard_data)
         })
 
+    @action(detail=False, methods=['get'], url_path='mapa')
+    def mapa(self, request):
+        """
+        Endpoint para obtener coordenadas de todos los cruces para el mapa
+        """
+        cruces = Cruce.objects.filter(
+            coordenadas_lat__isnull=False,
+            coordenadas_lng__isnull=False
+        ).values('id', 'nombre', 'ubicacion', 'estado', 'coordenadas_lat', 'coordenadas_lng')
+        
+        mapa_data = []
+        for cruce in cruces:
+            # Obtener telemetría más reciente para mostrar estado
+            telemetria_actual = Telemetria.objects.filter(
+                cruce_id=cruce['id']
+            ).order_by('-timestamp').first()
+            
+            # Contar alertas activas
+            alertas_activas = Alerta.objects.filter(
+                cruce_id=cruce['id'],
+                resolved=False
+            ).count()
+            
+            mapa_data.append({
+                'id': cruce['id'],
+                'nombre': cruce['nombre'],
+                'ubicacion': cruce['ubicacion'],
+                'estado': cruce['estado'],
+                'coordenadas': {
+                    'lat': float(cruce['coordenadas_lat']),
+                    'lng': float(cruce['coordenadas_lng'])
+                },
+                'telemetria_actual': {
+                    'battery_voltage': telemetria_actual.battery_voltage if telemetria_actual else None,
+                    'barrier_status': telemetria_actual.barrier_status if telemetria_actual else None,
+                    'timestamp': telemetria_actual.timestamp.isoformat() if telemetria_actual else None
+                } if telemetria_actual else None,
+                'alertas_activas': alertas_activas
+            })
+        
+        return Response({
+            'cruces': mapa_data,
+            'total_cruces': len(mapa_data)
+        })
+
 
 class SensorViewSet(ModelViewSet):
     """ViewSet para gestión de sensores"""
@@ -777,6 +1034,7 @@ class AlertaViewSet(ModelViewSet):
         cruce_id = self.request.query_params.get('cruce_id', None)
         tipo = self.request.query_params.get('tipo', None)
         resuelta = self.request.query_params.get('resuelta', None)
+        severidad = self.request.query_params.get('severidad', None)
         
         if cruce_id:
             queryset = queryset.filter(cruce_id=cruce_id)
@@ -785,6 +1043,8 @@ class AlertaViewSet(ModelViewSet):
         if resuelta is not None:
             resuelta_bool = resuelta.lower() == 'true'
             queryset = queryset.filter(resolved=resuelta_bool)
+        if severidad:
+            queryset = queryset.filter(severity=severidad)
         return queryset
 
     @action(detail=False, methods=['get'], url_path='dashboard')

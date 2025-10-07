@@ -22,6 +22,8 @@ urlpatterns = [
     path('logout', views.logout_view, name='logout'),
     path('register', views.register_view, name='register'),
     path('profile', views.profile_view, name='profile'),
+    path('change-password', views.change_password_view, name='change-password'),
+    path('notification-settings', views.notification_settings_view, name='notification-settings'),
     
     # Endpoint público para ESP32 (sin autenticación JWT)
     path('esp32/telemetria', views.esp32_telemetria, name='esp32-telemetria'),

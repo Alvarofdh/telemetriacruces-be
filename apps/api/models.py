@@ -240,7 +240,14 @@ class Alerta(models.Model):
         ('GABINETE_ABIERTO', 'Gabinete Abierto'),
     ]
     
+    SEVERITY_CHOICES = [
+        ('CRITICAL', 'Crítica'),
+        ('WARNING', 'Advertencia'),
+        ('INFO', 'Información'),
+    ]
+    
     type = models.CharField(max_length=20, choices=ALERT_TYPES)
+    severity = models.CharField(max_length=10, choices=SEVERITY_CHOICES, default='INFO')
     description = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
     resolved = models.BooleanField(default=False)
@@ -258,3 +265,48 @@ class Alerta(models.Model):
         verbose_name = "Alerta"
         verbose_name_plural = "Alertas"
         ordering = ['-created_at']
+
+
+class UserNotificationSettings(models.Model):
+    """Configuración de notificaciones del usuario"""
+    user = models.OneToOneField('auth.User', on_delete=models.CASCADE, related_name='notification_settings')
+    
+    # Notificaciones generales
+    enable_notifications = models.BooleanField(default=True, verbose_name="Activar notificaciones")
+    enable_push_notifications = models.BooleanField(default=True, verbose_name="Notificaciones push")
+    enable_email_notifications = models.BooleanField(default=False, verbose_name="Notificaciones por email")
+    
+    # Tipos de alertas específicas
+    notify_critical_alerts = models.BooleanField(default=True, verbose_name="Alertas críticas")
+    notify_warning_alerts = models.BooleanField(default=True, verbose_name="Alertas de advertencia")
+    notify_info_alerts = models.BooleanField(default=False, verbose_name="Alertas informativas")
+    
+    # Eventos específicos
+    notify_barrier_events = models.BooleanField(default=True, verbose_name="Eventos de barrera")
+    notify_battery_low = models.BooleanField(default=True, verbose_name="Batería baja")
+    notify_communication_lost = models.BooleanField(default=True, verbose_name="Comunicación perdida")
+    notify_gabinete_open = models.BooleanField(default=True, verbose_name="Gabinete abierto")
+    
+    # Configuración de frecuencia
+    notification_frequency = models.CharField(
+        max_length=20,
+        choices=[
+            ('IMMEDIATE', 'Inmediato'),
+            ('HOURLY', 'Cada hora'),
+            ('DAILY', 'Diario'),
+            ('WEEKLY', 'Semanal'),
+        ],
+        default='IMMEDIATE',
+        verbose_name="Frecuencia de notificaciones"
+    )
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    def __str__(self):
+        return f"Configuración de notificaciones - {self.user.username}"
+    
+    class Meta:
+        verbose_name = "Configuración de Notificaciones"
+        verbose_name_plural = "Configuraciones de Notificaciones"

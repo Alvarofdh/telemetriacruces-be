@@ -3,7 +3,7 @@ from django.contrib.auth.models import User
 from django.contrib.auth import authenticate
 from django.core.exceptions import ObjectDoesNotExist
 from rest_framework_simplejwt.tokens import RefreshToken
-from .models import Telemetria, Cruce, Sensor, BarrierEvent, Alerta
+from .models import Telemetria, Cruce, Sensor, BarrierEvent, Alerta, UserNotificationSettings
 
 class UserSerializer(serializers.ModelSerializer):
     """Serializer para el modelo User de Django"""
@@ -173,6 +173,7 @@ class AlertaSerializer(serializers.ModelSerializer):
     """Serializer para el modelo Alerta"""
     cruce_nombre = serializers.CharField(source='cruce.nombre', read_only=True)
     type_display = serializers.CharField(source='get_type_display', read_only=True)
+    severity_display = serializers.CharField(source='get_severity_display', read_only=True)
     
     class Meta:
         model = Alerta
@@ -255,4 +256,25 @@ class ESP32TelemetriaSerializer(serializers.Serializer):
         """Validar rango de sensor ADC (0-1023)"""
         if value is not None and (value < 0 or value > 1023):
             raise serializers.ValidationError("El valor del sensor debe estar entre 0 y 1023")
-        return value 
+        return value
+
+
+class UserNotificationSettingsSerializer(serializers.ModelSerializer):
+    """Serializer para configuración de notificaciones del usuario"""
+    frequency_display = serializers.CharField(source='get_notification_frequency_display', read_only=True)
+    
+    class Meta:
+        model = UserNotificationSettings
+        fields = '__all__'
+        read_only_fields = ('user', 'created_at', 'updated_at')
+    
+    def create(self, validated_data):
+        """Crear configuración de notificaciones para el usuario"""
+        user = self.context['request'].user
+        validated_data['user'] = user
+        return super().create(validated_data)
+    
+    def update(self, instance, validated_data):
+        """Actualizar configuración de notificaciones"""
+        validated_data.pop('user', None)  # No permitir cambiar el usuario
+        return super().update(instance, validated_data)
