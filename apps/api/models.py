@@ -105,6 +105,11 @@ class BarrierEvent(models.Model):
         verbose_name = "Evento de Barrera"
         verbose_name_plural = "Eventos de Barrera"
         ordering = ['-event_time']
+        indexes = [
+            models.Index(fields=['-event_time', 'cruce'], name='barrier_event_time_cruce_idx'),
+            models.Index(fields=['cruce', 'event_time'], name='barrier_cruce_event_time_idx'),
+            models.Index(fields=['state'], name='barrier_state_idx'),
+        ]
 
 
 class Cruce(models.Model):
@@ -123,6 +128,9 @@ class Cruce(models.Model):
     class Meta:
         verbose_name = "Cruce"
         verbose_name_plural = "Cruces"
+        indexes = [
+            models.Index(fields=['estado'], name='cruce_estado_idx'),
+        ]
 
 
 class DjangoAdminLog(models.Model):
@@ -227,6 +235,11 @@ class Telemetria(models.Model):
         verbose_name = "Telemetría"
         verbose_name_plural = "Telemetrías"
         ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['-timestamp', 'cruce'], name='telemetria_timestamp_cruce_idx'),
+            models.Index(fields=['cruce', 'timestamp'], name='telemetria_cruce_timestamp_idx'),
+            models.Index(fields=['barrier_status'], name='telemetria_barrier_status_idx'),
+        ]
 
 
 class Alerta(models.Model):
@@ -265,6 +278,44 @@ class Alerta(models.Model):
         verbose_name = "Alerta"
         verbose_name_plural = "Alertas"
         ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['-created_at', 'cruce'], name='alerta_created_cruce_idx'),
+            models.Index(fields=['cruce', 'resolved'], name='alerta_cruce_resolved_idx'),
+            models.Index(fields=['severity', 'resolved'], name='alerta_severity_resolved_idx'),
+        ]
+
+
+class UserProfile(models.Model):
+    """Perfil extendido del usuario con roles"""
+    ROLE_CHOICES = [
+        ('ADMIN', 'Administrador'),
+        ('MAINTENANCE', 'Personal de Mantenimiento'),
+        ('OBSERVER', 'Observador'),
+    ]
+    
+    user = models.OneToOneField('auth.User', on_delete=models.CASCADE, related_name='profile')
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='OBSERVER', verbose_name="Rol")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    def __str__(self):
+        return f"{self.user.username} - {self.get_role_display()}"
+    
+    def is_admin(self):
+        """Verificar si es administrador"""
+        return self.role == 'ADMIN'
+    
+    def is_maintenance(self):
+        """Verificar si es personal de mantenimiento"""
+        return self.role == 'MAINTENANCE'
+    
+    def is_observer(self):
+        """Verificar si es observador"""
+        return self.role == 'OBSERVER'
+    
+    class Meta:
+        verbose_name = "Perfil de Usuario"
+        verbose_name_plural = "Perfiles de Usuario"
 
 
 class UserNotificationSettings(models.Model):

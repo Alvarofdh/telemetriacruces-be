@@ -19,7 +19,8 @@ from .serializers import (
     BarrierEventSerializer, AlertaSerializer, ESP32TelemetriaSerializer,
     UserNotificationSettingsSerializer
 )
-from .models import Telemetria, Cruce, Sensor, BarrierEvent, Alerta, UserNotificationSettings
+from .models import Telemetria, Cruce, Sensor, BarrierEvent, Alerta, UserNotificationSettings, UserProfile
+from .permissions import IsAdmin, IsAdminOrMaintenance, IsObserverOrAbove, CanModifyCruces, CanModifyAlertas
 
 # Configurar logging
 logger = logging.getLogger(__name__)
@@ -138,10 +139,20 @@ def login_view(request):
         user = serializer.validated_data['user']  # type: ignore
         refresh = RefreshToken.for_user(user)
         
+        # Obtener rol del usuario
+        user_data = UserSerializer(user).data
+        try:
+            profile = user.profile
+            user_data['role'] = profile.role
+            user_data['role_display'] = profile.get_role_display()
+        except:
+            user_data['role'] = 'OBSERVER'
+            user_data['role_display'] = 'Observador'
+        
         return Response({
             'access': str(refresh.access_token),
             'refresh': str(refresh),
-            'user': UserSerializer(user).data,
+            'user': user_data,
             'message': 'Login exitoso'
         }, status=status.HTTP_200_OK)
     
@@ -211,11 +222,12 @@ def logout_view(request):
     }
 )
 @api_view(['POST'])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def register_view(request):
     """
     Endpoint para registrar nuevos usuarios.
     
+    Solo administradores pueden crear usuarios.
     Crea un nuevo usuario en el sistema usando email.
     El username se genera automáticamente desde el email.
     
@@ -229,8 +241,20 @@ def register_view(request):
     Campos opcionales:
     - first_name: Nombre del usuario
     - last_name: Apellido del usuario
+    - role: Rol del usuario (ADMIN, MAINTENANCE, OBSERVER) - Solo admin puede crear otros admin
     """
-    serializer = RegisterSerializer(data=request.data)
+    # Verificar que el usuario es administrador
+    try:
+        if not request.user.profile.is_admin():
+            return Response({
+                'error': 'Solo administradores pueden crear usuarios'
+            }, status=status.HTTP_403_FORBIDDEN)
+    except:
+        return Response({
+            'error': 'Usuario no válido'
+        }, status=status.HTTP_403_FORBIDDEN)
+    
+    serializer = RegisterSerializer(data=request.data, context={'request': request})
     if serializer.is_valid():
         user = serializer.save()
         return Response({
@@ -537,8 +561,23 @@ def esp32_telemetria(request):
                 'details': serializer.errors
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Obtener el cruce
-        cruce = Cruce.objects.get(id=serializer.validated_data['cruce_id'])
+        # Obtener el cruce y validar que existe y está activo
+        try:
+            cruce = Cruce.objects.get(id=serializer.validated_data['cruce_id'])
+            if cruce.estado != 'ACTIVO':
+                logger.warning(f"ESP32 - Intento de enviar datos a cruce inactivo: {cruce.id}")
+                return Response({
+                    'status': 'error',
+                    'message': f'El cruce {cruce.nombre} no está activo',
+                    'details': {'cruce_id': cruce.id, 'estado': cruce.estado}
+                }, status=status.HTTP_400_BAD_REQUEST)
+        except Cruce.DoesNotExist:
+            logger.error(f"ESP32 - Cruce no encontrado: {serializer.validated_data['cruce_id']}")
+            return Response({
+                'status': 'error',
+                'message': 'Cruce no encontrado',
+                'details': {'cruce_id': serializer.validated_data['cruce_id']}
+            }, status=status.HTTP_404_NOT_FOUND)
         
         # Crear telemetría
         telemetria_data = {
@@ -713,7 +752,7 @@ class CruceViewSet(ModelViewSet):
     """ViewSet para gestión de cruces ferroviarios"""
     queryset = Cruce.objects.all()
     serializer_class = CruceSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CanModifyCruces]
 
     def get_queryset(self):
         queryset = Cruce.objects.all()
@@ -728,32 +767,33 @@ class CruceViewSet(ModelViewSet):
         """
         instance = self.get_object()
         
+        # Optimización: Usar select_related y prefetch_related para evitar N+1 queries
         # Obtener telemetría más reciente
         telemetria_actual = Telemetria.objects.filter(
             cruce=instance
-        ).order_by('-timestamp').first()
+        ).select_related('cruce').order_by('-timestamp').first()
         
         # Obtener últimas 10 telemetrías para historial
         telemetrias_recientes = Telemetria.objects.filter(
             cruce=instance
-        ).order_by('-timestamp')[:10]
+        ).select_related('cruce').order_by('-timestamp')[:10]
         
-        # Obtener alertas activas
+        # Obtener alertas activas con prefetch de cruce
         alertas_activas = Alerta.objects.filter(
             cruce=instance,
             resolved=False
-        ).order_by('-created_at')
+        ).select_related('cruce', 'telemetria').order_by('-created_at')
         
-        # Obtener últimos eventos de barrera
+        # Obtener últimos eventos de barrera con prefetch de cruce
         eventos_recientes = BarrierEvent.objects.filter(
             cruce=instance
-        ).order_by('-event_time')[:5]
+        ).select_related('cruce', 'telemetria').order_by('-event_time')[:5]
         
-        # Obtener sensores del cruce
+        # Obtener sensores del cruce con prefetch de cruce
         sensores = Sensor.objects.filter(
             cruce=instance,
             activo=True
-        )
+        ).select_related('cruce')
         
         # Construir respuesta completa
         cruce_data = {
@@ -855,25 +895,52 @@ class CruceViewSet(ModelViewSet):
         Endpoint para dashboard que muestra resumen de todos los cruces
         con su telemetría actual y alertas activas
         """
-        cruces = Cruce.objects.all()
+        # Optimización: Prefetch telemetría y alertas para evitar N+1 queries
+        from django.db.models import Prefetch, OuterRef, Subquery
+        
+        # Subquery para obtener la telemetría más reciente de cada cruce
+        latest_telemetria = Telemetria.objects.filter(
+            cruce=OuterRef('pk')
+        ).order_by('-timestamp')[:1]
+        
+        # Prefetch alertas activas
+        alertas_prefetch = Prefetch(
+            'alertas',
+            queryset=Alerta.objects.filter(resolved=False).order_by('-created_at'),
+            to_attr='alertas_activas_list'
+        )
+        
+        # Prefetch eventos recientes
+        eventos_prefetch = Prefetch(
+            'barrier_events',
+            queryset=BarrierEvent.objects.order_by('-event_time')[:1],
+            to_attr='ultimo_evento_list'
+        )
+        
+        cruces = Cruce.objects.prefetch_related(
+            alertas_prefetch,
+            eventos_prefetch
+        ).annotate(
+            latest_telemetria_id=Subquery(latest_telemetria.values('id')[:1])
+        )
+        
+        # Obtener todas las telemetrías más recientes en una sola query
+        telemetria_ids = [c.latest_telemetria_id for c in cruces if c.latest_telemetria_id]
+        telemetrias_dict = {
+            t.id: t for t in Telemetria.objects.filter(id__in=telemetria_ids).select_related('cruce')
+        }
+        
         dashboard_data = []
         
         for cruce in cruces:
-            # Obtener telemetría más reciente
-            telemetria_actual = Telemetria.objects.filter(
-                cruce=cruce
-            ).order_by('-timestamp').first()
+            # Obtener telemetría más reciente del diccionario
+            telemetria_actual = telemetrias_dict.get(cruce.latest_telemetria_id) if cruce.latest_telemetria_id else None
             
-            # Contar alertas activas
-            alertas_activas = Alerta.objects.filter(
-                cruce=cruce,
-                resolved=False
-            ).count()
+            # Contar alertas activas (ya prefetched)
+            alertas_activas = len(cruce.alertas_activas_list) if hasattr(cruce, 'alertas_activas_list') else 0
             
-            # Obtener último evento de barrera
-            ultimo_evento = BarrierEvent.objects.filter(
-                cruce=cruce
-            ).order_by('-event_time').first()
+            # Obtener último evento (ya prefetched)
+            ultimo_evento = cruce.ultimo_evento_list[0] if hasattr(cruce, 'ultimo_evento_list') and cruce.ultimo_evento_list else None
             
             cruce_data = {
                 'id': cruce.id,
@@ -955,7 +1022,16 @@ class SensorViewSet(ModelViewSet):
     """ViewSet para gestión de sensores"""
     queryset = Sensor.objects.all()
     serializer_class = SensorSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsObserverOrAbove]
+    
+    def get_permissions(self):
+        """
+        Los observadores solo pueden leer.
+        Solo admin puede crear/modificar sensores.
+        """
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [IsAuthenticated(), IsAdmin()]
+        return [IsAuthenticated(), IsObserverOrAbove()]
 
     def get_queryset(self):
         queryset = Sensor.objects.all()
@@ -973,7 +1049,16 @@ class TelemetriaViewSet(ModelViewSet):
     """ViewSet para gestión de telemetría con lógica de negocio"""
     queryset = Telemetria.objects.all()
     serializer_class = TelemetriaSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsObserverOrAbove]
+    
+    def get_permissions(self):
+        """
+        Los observadores solo pueden leer.
+        Solo admin puede crear/modificar telemetría manualmente.
+        """
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [IsAuthenticated(), IsAdmin()]
+        return [IsAuthenticated(), IsObserverOrAbove()]
 
     def get_queryset(self):
         queryset = Telemetria.objects.all()
@@ -1006,7 +1091,16 @@ class BarrierEventViewSet(ModelViewSet):
     """ViewSet para gestión de eventos de barrera"""
     queryset = BarrierEvent.objects.all()
     serializer_class = BarrierEventSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsObserverOrAbove]
+    
+    def get_permissions(self):
+        """
+        Los observadores solo pueden leer.
+        Solo admin puede crear/modificar eventos manualmente.
+        """
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [IsAuthenticated(), IsAdmin()]
+        return [IsAuthenticated(), IsObserverOrAbove()]
 
     def get_queryset(self):
         queryset = BarrierEvent.objects.all()
@@ -1027,7 +1121,7 @@ class AlertaViewSet(ModelViewSet):
     """ViewSet para gestión de alertas"""
     queryset = Alerta.objects.all()
     serializer_class = AlertaSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CanModifyAlertas]
 
     def get_queryset(self):
         queryset = Alerta.objects.all()

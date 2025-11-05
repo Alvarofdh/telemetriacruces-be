@@ -3,14 +3,32 @@ from django.contrib.auth.models import User
 from django.contrib.auth import authenticate
 from django.core.exceptions import ObjectDoesNotExist
 from rest_framework_simplejwt.tokens import RefreshToken
-from .models import Telemetria, Cruce, Sensor, BarrierEvent, Alerta, UserNotificationSettings
+from .models import Telemetria, Cruce, Sensor, BarrierEvent, Alerta, UserNotificationSettings, UserProfile
+
+class UserProfileSerializer(serializers.ModelSerializer):
+    """Serializer para el perfil de usuario"""
+    role_display = serializers.CharField(source='get_role_display', read_only=True)
+    
+    class Meta:
+        model = UserProfile
+        fields = ('role', 'role_display', 'created_at', 'updated_at')
+        read_only_fields = ('created_at', 'updated_at')
 
 class UserSerializer(serializers.ModelSerializer):
     """Serializer para el modelo User de Django"""
+    profile = UserProfileSerializer(read_only=True)
+    full_name = serializers.SerializerMethodField()
+    
     class Meta:
         model = User
-        fields = ('id', 'username', 'email', 'first_name', 'last_name', 'date_joined')
+        fields = ('id', 'username', 'email', 'first_name', 'last_name', 'full_name', 'date_joined', 'profile')
         read_only_fields = ('id', 'date_joined')
+    
+    def get_full_name(self, obj):
+        """Obtener nombre completo del usuario"""
+        if obj.first_name or obj.last_name:
+            return f"{obj.first_name} {obj.last_name}".strip()
+        return obj.username
 
 class LoginSerializer(serializers.Serializer):
     """Serializer para el login con email"""
@@ -46,10 +64,11 @@ class RegisterSerializer(serializers.ModelSerializer):
     password_confirm = serializers.CharField(write_only=True)
     first_name = serializers.CharField(required=False, allow_blank=True)
     last_name = serializers.CharField(required=False, allow_blank=True)
+    role = serializers.ChoiceField(choices=UserProfile.ROLE_CHOICES, default='OBSERVER', write_only=True)
 
     class Meta:
         model = User
-        fields = ('email', 'password', 'password_confirm', 'first_name', 'last_name')
+        fields = ('email', 'password', 'password_confirm', 'first_name', 'last_name', 'role')
 
     def validate(self, attrs):
         if attrs['password'] != attrs['password_confirm']:
@@ -59,10 +78,23 @@ class RegisterSerializer(serializers.ModelSerializer):
         if User.objects.filter(email=attrs['email']).exists():
             raise serializers.ValidationError("Este email ya está registrado")
         
+        # Solo administradores pueden crear otros administradores
+        request = self.context.get('request')
+        if attrs.get('role') == 'ADMIN':
+            if request and request.user.is_authenticated:
+                try:
+                    if not request.user.profile.is_admin():
+                        raise serializers.ValidationError("Solo administradores pueden crear otros administradores")
+                except:
+                    raise serializers.ValidationError("Solo administradores pueden crear otros administradores")
+            else:
+                raise serializers.ValidationError("Solo administradores pueden crear otros administradores")
+        
         return attrs
 
     def create(self, validated_data):
         validated_data.pop('password_confirm')
+        role = validated_data.pop('role', 'OBSERVER')
         
         # Generar username desde el email
         email = validated_data['email']
@@ -83,6 +115,10 @@ class RegisterSerializer(serializers.ModelSerializer):
             first_name=validated_data.get('first_name', ''),
             last_name=validated_data.get('last_name', '')
         )
+        
+        # Crear perfil con el rol especificado
+        UserProfile.objects.create(user=user, role=role)
+        
         return user
 
 class TokenSerializer(serializers.Serializer):
