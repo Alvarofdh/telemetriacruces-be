@@ -128,6 +128,7 @@ class Cruce(models.Model):
     class Meta:
         verbose_name = "Cruce"
         verbose_name_plural = "Cruces"
+        ordering = ['nombre']  # Ordenar por nombre por defecto
         indexes = [
             models.Index(fields=['estado'], name='cruce_estado_idx'),
         ]
@@ -201,6 +202,7 @@ class Sensor(models.Model):
     class Meta:
         verbose_name = "Sensor"
         verbose_name_plural = "Sensores"
+        ordering = ['nombre']  # Ordenar por nombre por defecto
 
 
 class Telemetria(models.Model):

@@ -755,7 +755,7 @@ class CruceViewSet(ModelViewSet):
     permission_classes = [IsAuthenticated, CanModifyCruces]
 
     def get_queryset(self):
-        queryset = Cruce.objects.all()
+        queryset = Cruce.objects.all().order_by('nombre')  # Ordenar por nombre para evitar advertencia de paginación
         estado = self.request.query_params.get('estado', None)
         if estado:
             queryset = queryset.filter(estado=estado)
