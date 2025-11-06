@@ -1,4 +1,4 @@
-name: Deploy to CapRover (Django)
+name: Build & Deploy to CapRover
 
 on:
   push:
@@ -15,11 +15,10 @@ jobs:
       - name: Install CapRover CLI
         run: npm install -g caprover
 
+      # Aquí asume que en la raíz está tu captain-definition y tu Dockerfile
       - name: Deploy to CapRover
         run: |
-          caprover login \
-            --server "${{ secrets.CAPROVER_SERVER }}" \
-            --username ci-viametrica \
-            --password "${{ secrets.APP_TOKEN }}"
-
-          caprover deploy -a "${{ secrets.APP_NAME }}"
+          caprover deploy \
+            -h "${{ secrets.CAPROVER_SERVER }}" \
+            -p "${{ secrets.APP_TOKEN }}" \
+            -a "${{ secrets.APP_NAME }}"
