@@ -18,6 +18,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # copia todo el proyecto
 COPY . /app/
 
+RUN mkdir -p /app/logs
 # copiamos el script de arranque
 COPY runserver.sh /app/runserver.sh
 RUN chmod +x /app/runserver.sh
