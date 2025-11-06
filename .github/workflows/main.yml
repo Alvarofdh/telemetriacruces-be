@@ -18,9 +18,8 @@ jobs:
       - name: Deploy to CapRover
         run: |
           caprover login \
-            -s "${{ secrets.CAPROVER_SERVER }}" \
-            -u ci-viametrica \
-            -p "${{ secrets.APP_TOKEN }}" \
-            -n viametrica-caprover
+            --server "${{ secrets.CAPROVER_SERVER }}" \
+            --username ci-viametrica \
+            --password "${{ secrets.APP_TOKEN }}"
 
           caprover deploy -a "${{ secrets.APP_NAME }}"
