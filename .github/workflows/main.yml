@@ -1,0 +1,26 @@
+name: Deploy to CapRover (Django)
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install CapRover CLI
+        run: npm install -g caprover
+
+      - name: Deploy to CapRover
+        run: |
+          caprover login \
+            -s "${{ secrets.CAPROVER_SERVER }}" \
+            -u ci-viametrica \
+            -p "${{ secrets.APP_TOKEN }}" \
+            -n viametrica-caprover
+
+          caprover deploy -a "${{ secrets.APP_NAME }}"
