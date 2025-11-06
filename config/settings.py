@@ -18,7 +18,7 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-%v)-r%vm$c$6$=1i8e&7dca0m5
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG', 'True').lower() == 'true'
 
-ALLOWED_HOSTS = ["viametrica-be.psicosiaodev-me"]
+ALLOWED_HOSTS = ["viametrica-be.psicosiodev-me"]
 
 # Configuración de URLs
 APPEND_SLASH = True  # Agrega automáticamente / al final de URLs
@@ -176,7 +176,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-    "https://viametrica-bepsicosiaodev-me",
+    "https://viametrica-be.psicosiodev-me",
 ]
 
 CORS_ALLOW_CREDENTIALS = True
