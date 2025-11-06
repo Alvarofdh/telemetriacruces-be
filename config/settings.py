@@ -18,7 +18,7 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-%v)-r%vm$c$6$=1i8e&7dca0m5
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG', 'True').lower() == 'true'
 
-ALLOWED_HOSTS = ["viametrica-bepsicosiaodev-me"]
+ALLOWED_HOSTS = ["viametrica-be.psicosiaodev-me"]
 
 # Configuración de URLs
 APPEND_SLASH = True  # Agrega automáticamente / al final de URLs
