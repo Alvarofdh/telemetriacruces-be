@@ -11,17 +11,17 @@ RUN apt-get update && apt-get install -y \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# copia requirements
+# instala requirements primero
 COPY requirements.txt /app/
-
-# instala dependencias (fijas django aquí)
 RUN pip install --no-cache-dir -r requirements.txt
 
-# copia el resto del proyecto
+# copia todo el proyecto
 COPY . /app/
 
-# expone el puerto que usará gunicorn
+# copiamos el script de arranque
+COPY runserver.sh /app/runserver.sh
+RUN chmod +x /app/runserver.sh
+
 EXPOSE 8500
 
-# comando de arranque
-CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8500"]
+CMD ["/app/runserver.sh"]
