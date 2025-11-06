@@ -14,8 +14,8 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      # Empaquetamos SOLO lo que necesita CapRover para construir la imagen
-      - name: Create deployment tar
+      # 1) crear el deploy.tar que la acción de caprover espera
+      - name: Create deploy.tar
         uses: a7ul/tar-action@v1.1.0
         with:
           command: c
@@ -31,11 +31,10 @@ jobs:
             .env.example
           outPath: deploy.tar
 
-      # Deploy usando la acción oficial de CapRover
+      # 2) desplegar a CapRover (v1.1.2)
       - name: Deploy App to CapRover
-        uses: caprover/deploy-from-github@v1.0.1
+        uses: caprover/deploy-from-github@v1.1.2
         with:
-            server: '${{ secrets.CAPROVER_SERVER }}'
-            app: '${{ secrets.APP_NAME }}'
-            token: '${{ secrets.APP_TOKEN }}'
-            tarFile: 'deploy.tar'
+          server: '${{ secrets.CAPROVER_SERVER }}'
+          app: '${{ secrets.APP_NAME }}'
+          token: '${{ secrets.APP_TOKEN }}'
