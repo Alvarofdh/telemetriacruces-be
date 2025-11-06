@@ -14,6 +14,24 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      # 1) crear el deploy.tar que la acción de caprover espera
+      - name: Create deploy.tar
+        uses: a7ul/tar-action@v1.1.0
+        with:
+          command: c
+          cwd: "./"
+          files: |
+            apps/
+            config/
+            database/
+            manage.py
+            requirements.txt
+            Dockerfile
+            captain-definition
+            .env.example
+          outPath: deploy.tar
+
+      # 2) desplegar a CapRover (v1.1.2)
       - name: Deploy App to CapRover
         uses: caprover/deploy-from-github@v1.1.2
         with:
