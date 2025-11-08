@@ -9,6 +9,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     build-essential \
     libpq-dev \
+    netcat-openbsd \
     && rm -rf /var/lib/apt/lists/*
 
 # instala requirements primero
@@ -18,7 +19,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # copia todo el proyecto
 COPY . /app/
 
-RUN mkdir -p /app/logs
+# Crear directorios necesarios
+RUN mkdir -p /app/logs /app/staticfiles
+
 # copiamos el script de arranque
 COPY runserver.sh /app/runserver.sh
 RUN chmod +x /app/runserver.sh
