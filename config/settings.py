@@ -18,7 +18,7 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-%v)-r%vm$c$6$=1i8e&7dca0m5
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG', 'True').lower() == 'true'
 
-ALLOWED_HOSTS = ['viametrica-be.psicosiodev.me']
+ALLOWED_HOSTS = ['viametrica-be.psicosiodev.me','fe.psicosiodev.me']
 
 # Configuración de URLs
 APPEND_SLASH = True  # Agrega automáticamente / al final de URLs
@@ -77,10 +77,10 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv('DB_NAME', 'cruces_ferroviarios'),
-        'USER': os.getenv('DB_USER', 'postgres'),
+        'NAME': os.getenv('DB_NAME', ''),
+        'USER': os.getenv('DB_USER', ''),
         'PASSWORD': os.getenv('DB_PASSWORD', ''),
-        'HOST': os.getenv('DB_HOST', 'localhost'),
+        'HOST': os.getenv('DB_HOST', ''),
         'PORT': os.getenv('DB_PORT', '5432'),
     }
 }
@@ -183,6 +183,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "https://viametrica-be.psicosiodev.me",
+    "https://fe.psicosiodev.me",
 ]
 
 CORS_ALLOW_CREDENTIALS = True
