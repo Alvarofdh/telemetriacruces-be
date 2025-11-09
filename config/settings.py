@@ -209,6 +209,24 @@ CORS_ALLOW_HEADERS = [
     'x-requested-with',
 ]
 
+# CSRF Configuration - Necesario para el admin de Django
+CSRF_TRUSTED_ORIGINS = [
+    "https://viametrica-be.psicosiodev.me",
+    "https://fe.psicosiodev.me",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+
+# Configuración de cookies para funcionar correctamente con HTTPS/HTTP
+# En producción (HTTPS) usar True, en desarrollo (HTTP) usar False
+USE_HTTPS = os.getenv('USE_HTTPS', 'True').lower() == 'true'
+SESSION_COOKIE_SECURE = USE_HTTPS  # Solo enviar cookies por HTTPS en producción
+CSRF_COOKIE_SECURE = USE_HTTPS  # Solo enviar cookies CSRF por HTTPS en producción
+SESSION_COOKIE_SAMESITE = 'Lax'  # Permitir cookies en requests del mismo sitio
+CSRF_COOKIE_SAMESITE = 'Lax'  # Permitir cookies CSRF en requests del mismo sitio
+
 # Configuración específica para ESP32
 ESP32_TOKEN = os.getenv('ESP32_TOKEN', 'esp32_default_token_123')
 
