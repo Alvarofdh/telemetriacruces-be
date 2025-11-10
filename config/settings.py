@@ -220,8 +220,9 @@ CSRF_TRUSTED_ORIGINS = [
 ]
 
 # Configuración de cookies para funcionar correctamente con HTTPS/HTTP
-# En producción (HTTPS) usar True, en desarrollo (HTTP) usar False
-USE_HTTPS = os.getenv('USE_HTTPS', 'True').lower() == 'true'
+# En producción (DEBUG=False) usar True, en desarrollo (DEBUG=True) usar False
+# Se puede sobrescribir con USE_HTTPS en variables de entorno
+USE_HTTPS = os.getenv('USE_HTTPS', str(not DEBUG)).lower() == 'true'
 SESSION_COOKIE_SECURE = USE_HTTPS  # Solo enviar cookies por HTTPS en producción
 CSRF_COOKIE_SECURE = USE_HTTPS  # Solo enviar cookies CSRF por HTTPS en producción
 SESSION_COOKIE_SAMESITE = 'Lax'  # Permitir cookies en requests del mismo sitio
