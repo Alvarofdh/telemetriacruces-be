@@ -16,7 +16,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-%v)-r%vm$c$6$=1i8e&7dca0m5w3y&jqv!a!7j9!1fa4k*j@ju')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv('DEBUG', 'True').lower() == 'true'
+# Por defecto False en producción, solo True si se especifica explícitamente
+DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
 
 ALLOWED_HOSTS = ['viametrica-be.psicosiodev.me','fe.psicosiodev.me']
 
@@ -146,8 +147,7 @@ REST_FRAMEWORK = {
     'PAGE_SIZE': 20,
     'DEFAULT_RENDERER_CLASSES': [
         'rest_framework.renderers.JSONRenderer',
-        'rest_framework.renderers.BrowsableAPIRenderer',
-    ],
+    ] + (['rest_framework.renderers.BrowsableAPIRenderer'] if DEBUG else []),
 }
 
 # JWT Settings

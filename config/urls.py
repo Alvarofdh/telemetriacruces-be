@@ -1,5 +1,6 @@
 from django.contrib import admin
 from django.urls import path, include, re_path
+from django.http import JsonResponse
 from rest_framework import permissions
 from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
@@ -19,7 +20,23 @@ schema_view = get_schema_view(
     permission_classes=(permissions.AllowAny,),
 )
 
+def root_view(request):
+    """
+    Vista raíz de la API. Devuelve información básica sin exponer detalles del sistema.
+    """
+    return JsonResponse({
+        'service': 'API de Monitoreo de Cruces Ferroviarios',
+        'version': '1.0.0',
+        'endpoints': {
+            'api': '/api/',
+            'documentation': '/swagger/',
+            'admin': '/admin/'
+        },
+        'message': 'Esta es una API REST. Accede a /api/ para ver los endpoints disponibles.'
+    })
+
 urlpatterns = [
+    path('', root_view, name='root'),
     path('admin/', admin.site.urls),
     path('api/', include('apps.api.urls')),
     path('api-auth/', include('rest_framework.urls')),
