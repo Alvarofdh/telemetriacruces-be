@@ -5,8 +5,20 @@ from rest_framework import permissions
 from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
 from rest_framework_simplejwt.views import TokenRefreshView, TokenVerifyView
+from django.conf import settings
 
 # Configuración de Swagger
+# En producción, solo usuarios autenticados pueden acceder a la documentación
+# En desarrollo (DEBUG=True), permite acceso público para facilitar pruebas
+if settings.DEBUG:
+    # Desarrollo: acceso público
+    swagger_permission_classes = (permissions.AllowAny,)
+    swagger_public = True
+else:
+    # Producción: solo usuarios autenticados
+    swagger_permission_classes = (permissions.IsAuthenticated,)
+    swagger_public = False
+
 schema_view = get_schema_view(
     openapi.Info(
         title="API de Monitoreo de Cruces Ferroviarios",
@@ -16,24 +28,29 @@ schema_view = get_schema_view(
         contact=openapi.Contact(email="contact@crucesferroviarios.com"),
         license=openapi.License(name="BSD License"),
     ),
-    public=True,
-    permission_classes=(permissions.AllowAny,),
+    public=swagger_public,
+    permission_classes=swagger_permission_classes,
 )
 
 def root_view(request):
     """
     Vista raíz de la API. Devuelve información básica sin exponer detalles del sistema.
     """
-    return JsonResponse({
+    response_data = {
         'service': 'API de Monitoreo de Cruces Ferroviarios',
         'version': '1.0.0',
         'endpoints': {
             'api': '/api/',
-            'documentation': '/swagger/',
             'admin': '/admin/'
         },
         'message': 'Esta es una API REST. Accede a /api/ para ver los endpoints disponibles.'
-    })
+    }
+    
+    # Solo mostrar Swagger en desarrollo o si el usuario está autenticado
+    if settings.DEBUG or request.user.is_authenticated:
+        response_data['endpoints']['documentation'] = '/swagger/'
+    
+    return JsonResponse(response_data)
 
 urlpatterns = [
     path('', root_view, name='root'),
