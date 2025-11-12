@@ -1,7 +1,10 @@
 from django.contrib import admin
 from django.urls import path, include, re_path
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponseForbidden
 from rest_framework import permissions
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
 from rest_framework_simplejwt.views import TokenRefreshView, TokenVerifyView
@@ -10,16 +13,6 @@ from rest_framework.authentication import SessionAuthentication, BasicAuthentica
 from django.conf import settings
 
 # Configuración de Swagger
-# SIEMPRE requiere autenticación para acceder a Swagger (seguridad)
-# No importa si DEBUG=True o False, Swagger debe estar protegido
-swagger_permission_classes = (permissions.IsAuthenticated,)
-swagger_public = False
-swagger_authentication_classes = (
-    JWTAuthentication,
-    SessionAuthentication,
-    BasicAuthentication,
-)
-
 schema_view = get_schema_view(
     openapi.Info(
         title="API de Monitoreo de Cruces Ferroviarios",
@@ -29,10 +22,65 @@ schema_view = get_schema_view(
         contact=openapi.Contact(email="contact@crucesferroviarios.com"),
         license=openapi.License(name="BSD License"),
     ),
-    public=swagger_public,
-    permission_classes=swagger_permission_classes,
-    authentication_classes=swagger_authentication_classes,
+    public=True,  # Permitir acceso al schema, pero protegeremos las vistas manualmente
+    permission_classes=(permissions.AllowAny,),
 )
+
+# Wrapper para proteger Swagger - requiere autenticación
+from functools import wraps
+from rest_framework_simplejwt.authentication import JWTAuthentication
+from rest_framework.authentication import SessionAuthentication
+
+def require_auth(view_func):
+    """Decorador que requiere autenticación para acceder a Swagger"""
+    @wraps(view_func)
+    def wrapper(request, *args, **kwargs):
+        # Verificar autenticación usando DRF
+        jwt_auth = JWTAuthentication()
+        session_auth = SessionAuthentication()
+        user = None
+        
+        # Intentar autenticar con JWT
+        try:
+            auth_result = jwt_auth.authenticate(request)
+            if auth_result:
+                user, token = auth_result
+        except:
+            pass
+        
+        # Si no hay usuario con JWT, intentar con sesión
+        if not user:
+            try:
+                auth_result = session_auth.authenticate(request)
+                if auth_result:
+                    user, token = auth_result
+            except:
+                pass
+        
+        # Si aún no hay usuario, verificar si hay sesión activa
+        if not user and hasattr(request, 'user') and request.user.is_authenticated:
+            user = request.user
+        
+        # Si no hay usuario autenticado, retornar 403
+        if not user or not user.is_authenticated:
+            return HttpResponseForbidden(
+                '<h1>403 Forbidden</h1>'
+                '<p>Se requiere autenticación para acceder a la documentación de la API.</p>'
+                '<p>Por favor, haz login primero en <a href="/api/login">/api/login</a></p>'
+                '<p>O incluye tu token JWT en el header: <code>Authorization: Bearer TU_TOKEN</code></p>'
+            )
+        
+        # Asignar usuario al request
+        request.user = user
+        
+        # Si está autenticado, mostrar Swagger
+        return view_func(request, *args, **kwargs)
+    return wrapper
+
+# Crear vistas protegidas
+protected_swagger_ui = require_auth(schema_view.with_ui('swagger', cache_timeout=0))
+protected_redoc_ui = require_auth(schema_view.with_ui('redoc', cache_timeout=0))
+protected_schema_json = require_auth(schema_view.without_ui(cache_timeout=0))
 
 def root_view(request):
     """
@@ -64,8 +112,8 @@ urlpatterns = [
     path('api/token/refresh', TokenRefreshView.as_view(), name='token_refresh'),
     path('api/token/verify', TokenVerifyView.as_view(), name='token_verify'),
     
-    # URLs de Swagger
-    re_path(r'^swagger(?P<format>\.json|\.yaml)$', schema_view.without_ui(cache_timeout=0), name='schema-json'),
-    re_path(r'^swagger/$', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
-    re_path(r'^redoc/$', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
+    # URLs de Swagger - PROTEGIDAS con autenticación
+    re_path(r'^swagger(?P<format>\.json|\.yaml)$', protected_schema_json, name='schema-json'),
+    re_path(r'^swagger/$', protected_swagger_ui, name='schema-swagger-ui'),
+    re_path(r'^redoc/$', protected_redoc_ui, name='schema-redoc'),
 ]
