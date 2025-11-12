@@ -139,6 +139,18 @@ protected_swagger_view = ProtectedSwaggerUIView.as_view()
 protected_redoc_view = ProtectedRedocUIView.as_view()
 protected_schema_view = ProtectedSchemaView.as_view()
 
+def blocked_swagger_view(request, *args, **kwargs):
+    """Vista que SIEMPRE retorna 403 para Swagger"""
+    from django.http import JsonResponse
+    return JsonResponse(
+        {
+            'error': '403 Forbidden',
+            'detail': 'La documentación de la API está deshabilitada por seguridad.',
+            'message': 'Swagger no está disponible. Contacta al administrador para acceso.'
+        },
+        status=403
+    )
+
 def root_view(request):
     """
     Vista raíz de la API. Devuelve información básica sin exponer detalles del sistema.
@@ -153,10 +165,6 @@ def root_view(request):
         'message': 'Esta es una API REST. Accede a /api/ para ver los endpoints disponibles.'
     }
     
-    # Solo mostrar Swagger si el usuario está autenticado (seguridad)
-    if request.user.is_authenticated:
-        response_data['endpoints']['documentation'] = '/swagger/'
-    
     return JsonResponse(response_data)
 
 urlpatterns = [
@@ -170,20 +178,7 @@ urlpatterns = [
     path('api/token/verify', TokenVerifyView.as_view(), name='token_verify'),
     
     # URLs de Swagger - BLOQUEADAS COMPLETAMENTE
-    # Vista que SIEMPRE retorna 403 sin importar nada
-    def blocked_swagger_view(request, *args, **kwargs):
-        from django.http import JsonResponse
-        return JsonResponse(
-            {
-                'error': '403 Forbidden',
-                'detail': 'La documentación de la API está deshabilitada por seguridad.',
-                'message': 'Swagger no está disponible. Contacta al administrador para acceso.'
-            },
-            status=403
-        )
-    
-    # Todas las URLs de Swagger apuntan a la vista bloqueada
-    re_path(r'^swagger(?P<format>\.json|\.yaml)$', blocked_swagger_view, name='schema-json'),
-    re_path(r'^swagger/$', blocked_swagger_view, name='schema-swagger-ui'),
-    re_path(r'^redoc/$', blocked_swagger_view, name='schema-redoc'),
+    # Todas las URLs de Swagger retornan 403
+    re_path(r'^swagger', blocked_swagger_view, name='swagger-blocked'),
+    re_path(r'^redoc', blocked_swagger_view, name='redoc-blocked'),
 ]
