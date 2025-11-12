@@ -5,8 +5,28 @@ from rest_framework.reverse import reverse
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework import status
 from rest_framework.viewsets import ModelViewSet
-from drf_yasg.utils import swagger_auto_schema
-from drf_yasg import openapi
+# Swagger deshabilitado por seguridad
+# Funciones dummy para reemplazar decoradores de Swagger
+def swagger_auto_schema(*args, **kwargs):
+    """Decorador dummy - Swagger deshabilitado"""
+    def decorator(func):
+        return func
+    return decorator
+
+class openapi:
+    """Clase dummy para openapi - Swagger deshabilitado"""
+    class Info:
+        pass
+    class Response:
+        pass
+    class Schema:
+        pass
+    class Contact:
+        pass
+    class License:
+        pass
+    TYPE_STRING = 'string'
+    TYPE_OBJECT = 'object'
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate, login, logout
 from django.utils import timezone
