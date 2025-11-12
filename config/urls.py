@@ -169,7 +169,8 @@ urlpatterns = [
     path('api/token/refresh', TokenRefreshView.as_view(), name='token_refresh'),
     path('api/token/verify', TokenVerifyView.as_view(), name='token_verify'),
     
-    # URLs de Swagger - PROTEGIDAS con autenticación
+    # URLs de Swagger - PROTEGIDAS con middleware (el middleware bloquea antes de llegar aquí)
+    # Si el middleware permite el acceso, estas vistas se ejecutarán
     re_path(r'^swagger(?P<format>\.json|\.yaml)$', protected_schema_view, name='schema-json'),
     re_path(r'^swagger/$', protected_swagger_view, name='schema-swagger-ui'),
     re_path(r'^redoc/$', protected_redoc_view, name='schema-redoc'),

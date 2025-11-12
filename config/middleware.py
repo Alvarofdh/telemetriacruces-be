@@ -1,10 +1,13 @@
 """
 Middleware para proteger Swagger en producción
 """
+import logging
 from django.http import HttpResponseForbidden, JsonResponse
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework.authentication import SessionAuthentication
 from django.conf import settings
+
+logger = logging.getLogger(__name__)
 
 
 class SwaggerProtectionMiddleware:
@@ -17,36 +20,45 @@ class SwaggerProtectionMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
-        # Verificar si la URL es de Swagger
+        # Verificar si la URL es de Swagger o Redoc
         if request.path.startswith('/swagger') or request.path.startswith('/redoc'):
-            # Intentar autenticar con JWT
-            jwt_auth = JWTAuthentication()
+            logger.info(f"SwaggerProtectionMiddleware: Bloqueando acceso a {request.path}")
+            
+            # Verificar autenticación
             user = None
             
-            try:
-                auth_result = jwt_auth.authenticate(request)
-                if auth_result:
-                    user, token = auth_result
-            except:
-                pass
+            # 1. Verificar sesión de Django (ya procesada por AuthenticationMiddleware)
+            if hasattr(request, 'user') and request.user.is_authenticated:
+                user = request.user
+                logger.info(f"SwaggerProtectionMiddleware: Usuario encontrado en sesión Django: {user}")
             
-            # Si no hay usuario con JWT, intentar con sesión
+            # 2. Si no hay usuario, intentar JWT
             if not user:
-                session_auth = SessionAuthentication()
                 try:
+                    jwt_auth = JWTAuthentication()
+                    auth_result = jwt_auth.authenticate(request)
+                    if auth_result:
+                        user, token = auth_result
+                        request.user = user
+                        logger.info(f"SwaggerProtectionMiddleware: Usuario autenticado con JWT: {user}")
+                except Exception as e:
+                    logger.debug(f"SwaggerProtectionMiddleware: Error en autenticación JWT: {e}")
+            
+            # 3. Si aún no hay usuario, intentar sesión DRF
+            if not user:
+                try:
+                    session_auth = SessionAuthentication()
                     auth_result = session_auth.authenticate(request)
                     if auth_result:
                         user, token = auth_result
-                except:
-                    pass
+                        request.user = user
+                        logger.info(f"SwaggerProtectionMiddleware: Usuario autenticado con sesión DRF: {user}")
+                except Exception as e:
+                    logger.debug(f"SwaggerProtectionMiddleware: Error en autenticación DRF: {e}")
             
-            # Si aún no hay usuario, verificar sesión de Django
-            if not user and hasattr(request, 'user') and request.user.is_authenticated:
-                user = request.user
-            
-            # Si no hay usuario autenticado, BLOQUEAR el acceso
-            if not user or not user.is_authenticated:
-                # Retornar 403 Forbidden inmediatamente
+            # 4. Si NO hay usuario autenticado, BLOQUEAR
+            if not user:
+                logger.warning(f"SwaggerProtectionMiddleware: Acceso denegado a {request.path} - Sin autenticación")
                 return JsonResponse(
                     {
                         'error': '403 Forbidden',
@@ -56,8 +68,7 @@ class SwaggerProtectionMiddleware:
                     status=403
                 )
             
-            # Si está autenticado, asignar el usuario al request y continuar
-            request.user = user
+            logger.info(f"SwaggerProtectionMiddleware: Acceso permitido a {request.path} para usuario {user}")
 
         # Continuar con el procesamiento normal
         response = self.get_response(request)
