@@ -32,6 +32,36 @@ class ProtectedSwaggerUIView(APIView):
     authentication_classes = [JWTAuthentication, SessionAuthentication, BasicAuthentication]
     permission_classes = [IsAuthenticated]
     
+    def dispatch(self, request, *args, **kwargs):
+        """Verificar autenticación ANTES de cualquier renderizado"""
+        # Autenticar explícitamente
+        for auth_class in self.authentication_classes:
+            try:
+                auth_instance = auth_class()
+                auth_result = auth_instance.authenticate(request)
+                if auth_result:
+                    user, token = auth_result
+                    request.user = user
+                    break
+            except:
+                pass
+        
+        # Verificar permisos explícitamente
+        if not request.user or not request.user.is_authenticated:
+            from rest_framework.exceptions import AuthenticationFailed
+            from rest_framework.response import Response
+            from rest_framework import status
+            return Response(
+                {
+                    'detail': 'Las credenciales de autenticación no se proveyeron.',
+                    'message': 'Se requiere autenticación para acceder a la documentación de la API.'
+                },
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        
+        # Si está autenticado, continuar con el método normal
+        return super().dispatch(request, *args, **kwargs)
+    
     def get(self, request, *args, **kwargs):
         # El request de DRF funciona directamente con drf-yasg
         return schema_view.with_ui('swagger', cache_timeout=0)(request, *args, **kwargs)
@@ -41,6 +71,32 @@ class ProtectedRedocUIView(APIView):
     authentication_classes = [JWTAuthentication, SessionAuthentication, BasicAuthentication]
     permission_classes = [IsAuthenticated]
     
+    def dispatch(self, request, *args, **kwargs):
+        """Verificar autenticación ANTES de cualquier renderizado"""
+        for auth_class in self.authentication_classes:
+            try:
+                auth_instance = auth_class()
+                auth_result = auth_instance.authenticate(request)
+                if auth_result:
+                    user, token = auth_result
+                    request.user = user
+                    break
+            except:
+                pass
+        
+        if not request.user or not request.user.is_authenticated:
+            from rest_framework.response import Response
+            from rest_framework import status
+            return Response(
+                {
+                    'detail': 'Las credenciales de autenticación no se proveyeron.',
+                    'message': 'Se requiere autenticación para acceder a la documentación de la API.'
+                },
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        
+        return super().dispatch(request, *args, **kwargs)
+    
     def get(self, request, *args, **kwargs):
         return schema_view.with_ui('redoc', cache_timeout=0)(request, *args, **kwargs)
 
@@ -48,6 +104,32 @@ class ProtectedSchemaView(APIView):
     """Vista protegida para schema JSON/YAML - requiere autenticación"""
     authentication_classes = [JWTAuthentication, SessionAuthentication, BasicAuthentication]
     permission_classes = [IsAuthenticated]
+    
+    def dispatch(self, request, *args, **kwargs):
+        """Verificar autenticación ANTES de cualquier renderizado"""
+        for auth_class in self.authentication_classes:
+            try:
+                auth_instance = auth_class()
+                auth_result = auth_instance.authenticate(request)
+                if auth_result:
+                    user, token = auth_result
+                    request.user = user
+                    break
+            except:
+                pass
+        
+        if not request.user or not request.user.is_authenticated:
+            from rest_framework.response import Response
+            from rest_framework import status
+            return Response(
+                {
+                    'detail': 'Las credenciales de autenticación no se proveyeron.',
+                    'message': 'Se requiere autenticación para acceder a la documentación de la API.'
+                },
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        
+        return super().dispatch(request, *args, **kwargs)
     
     def get(self, request, *args, **kwargs):
         return schema_view.without_ui(cache_timeout=0)(request, *args, **kwargs)
