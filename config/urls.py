@@ -169,26 +169,21 @@ urlpatterns = [
     path('api/token/refresh', TokenRefreshView.as_view(), name='token_refresh'),
     path('api/token/verify', TokenVerifyView.as_view(), name='token_verify'),
     
-    # URLs de Swagger - SOLO en desarrollo (DEBUG=True)
-    # En producción, estas URLs retornan 403 directamente
-    if settings.DEBUG:
-        # Desarrollo: mostrar Swagger normalmente
-        re_path(r'^swagger(?P<format>\.json|\.yaml)$', protected_schema_view, name='schema-json'),
-        re_path(r'^swagger/$', protected_swagger_view, name='schema-swagger-ui'),
-        re_path(r'^redoc/$', protected_redoc_view, name='schema-redoc'),
-    else:
-        # Producción: bloquear completamente
-        def blocked_swagger_view(request, *args, **kwargs):
-            from django.http import JsonResponse
-            return JsonResponse(
-                {
-                    'error': '403 Forbidden',
-                    'detail': 'La documentación de la API no está disponible en producción.',
-                    'message': 'Swagger está deshabilitado por seguridad. Contacta al administrador para acceso.'
-                },
-                status=403
-            )
-        re_path(r'^swagger(?P<format>\.json|\.yaml)$', blocked_swagger_view, name='schema-json'),
-        re_path(r'^swagger/$', blocked_swagger_view, name='schema-swagger-ui'),
-        re_path(r'^redoc/$', blocked_swagger_view, name='schema-redoc'),
+    # URLs de Swagger - BLOQUEADAS COMPLETAMENTE
+    # Vista que SIEMPRE retorna 403 sin importar nada
+    def blocked_swagger_view(request, *args, **kwargs):
+        from django.http import JsonResponse
+        return JsonResponse(
+            {
+                'error': '403 Forbidden',
+                'detail': 'La documentación de la API está deshabilitada por seguridad.',
+                'message': 'Swagger no está disponible. Contacta al administrador para acceso.'
+            },
+            status=403
+        )
+    
+    # Todas las URLs de Swagger apuntan a la vista bloqueada
+    re_path(r'^swagger(?P<format>\.json|\.yaml)$', blocked_swagger_view, name='schema-json'),
+    re_path(r'^swagger/$', blocked_swagger_view, name='schema-swagger-ui'),
+    re_path(r'^redoc/$', blocked_swagger_view, name='schema-redoc'),
 ]
