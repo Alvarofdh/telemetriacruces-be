@@ -8,16 +8,10 @@ from rest_framework_simplejwt.views import TokenRefreshView, TokenVerifyView
 from django.conf import settings
 
 # Configuración de Swagger
-# En producción, solo usuarios autenticados pueden acceder a la documentación
-# En desarrollo (DEBUG=True), permite acceso público para facilitar pruebas
-if settings.DEBUG:
-    # Desarrollo: acceso público
-    swagger_permission_classes = (permissions.AllowAny,)
-    swagger_public = True
-else:
-    # Producción: solo usuarios autenticados
-    swagger_permission_classes = (permissions.IsAuthenticated,)
-    swagger_public = False
+# SIEMPRE requiere autenticación para acceder a Swagger (seguridad)
+# No importa si DEBUG=True o False, Swagger debe estar protegido
+swagger_permission_classes = (permissions.IsAuthenticated,)
+swagger_public = False
 
 schema_view = get_schema_view(
     openapi.Info(
@@ -46,8 +40,8 @@ def root_view(request):
         'message': 'Esta es una API REST. Accede a /api/ para ver los endpoints disponibles.'
     }
     
-    # Solo mostrar Swagger en desarrollo o si el usuario está autenticado
-    if settings.DEBUG or request.user.is_authenticated:
+    # Solo mostrar Swagger si el usuario está autenticado (seguridad)
+    if request.user.is_authenticated:
         response_data['endpoints']['documentation'] = '/swagger/'
     
     return JsonResponse(response_data)
