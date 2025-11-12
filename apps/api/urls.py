@@ -11,6 +11,10 @@ router.register(r'sensores', views.SensorViewSet, basename='sensor')
 router.register(r'telemetria', views.TelemetriaViewSet, basename='telemetria')
 router.register(r'barrier-events', views.BarrierEventViewSet, basename='barrier-event')
 router.register(r'alertas', views.AlertaViewSet, basename='alerta')
+router.register(r'users', views.UserViewSet, basename='user')
+router.register(r'mantenimiento-preventivo', views.MantenimientoPreventivoViewSet, basename='mantenimiento-preventivo')
+router.register(r'historial-mantenimiento', views.HistorialMantenimientoViewSet, basename='historial-mantenimiento')
+router.register(r'metricas-desempeno', views.MetricasDesempenoViewSet, basename='metricas-desempeno')
 
 urlpatterns = [
     # Endpoints básicos

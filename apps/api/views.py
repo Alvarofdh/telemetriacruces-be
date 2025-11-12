@@ -17,10 +17,18 @@ from .serializers import (
     LoginSerializer, RegisterSerializer, UserSerializer, TokenSerializer,
     TelemetriaSerializer, CruceSerializer, SensorSerializer, 
     BarrierEventSerializer, AlertaSerializer, ESP32TelemetriaSerializer,
-    UserNotificationSettingsSerializer
+    UserNotificationSettingsSerializer,
+    MantenimientoPreventivoSerializer, HistorialMantenimientoSerializer,
+    MetricasDesempenoSerializer
 )
-from .models import Telemetria, Cruce, Sensor, BarrierEvent, Alerta, UserNotificationSettings, UserProfile
+from .user_serializer import UserManagementSerializer, UserUpdateSerializer
+from .models import (
+    Telemetria, Cruce, Sensor, BarrierEvent, Alerta, UserNotificationSettings, UserProfile,
+    MantenimientoPreventivo, HistorialMantenimiento, MetricasDesempeno
+)
 from .permissions import IsAdmin, IsAdminOrMaintenance, IsObserverOrAbove, CanModifyCruces, CanModifyAlertas
+from django.contrib.auth.models import User
+from .security import log_security_event
 
 # Configurar logging
 logger = logging.getLogger(__name__)
@@ -97,12 +105,89 @@ def health_check(request, format=None):
     
     URL: GET /api/health
     """
-    return Response({
+    from django.db import connection
+    
+    health_status = {
         'status': 'ok',
         'message': 'API funcionando correctamente',
         'timestamp': timezone.now().isoformat(),
-        'service': 'Monitoreo de Cruces Ferroviarios API'
-    })
+        'service': 'Monitoreo de Cruces Ferroviarios API',
+        'checks': {}
+    }
+    
+    # Verificar conexión a base de datos
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+            health_status['checks']['database'] = {
+                'status': 'ok',
+                'message': 'Conexión a base de datos exitosa'
+            }
+    except Exception as e:
+        health_status['checks']['database'] = {
+            'status': 'error',
+            'message': f'Error de conexión: {str(e)}'
+        }
+        health_status['status'] = 'error'
+    
+    # Verificar espacio en disco (opcional, requiere psutil)
+    try:
+        import psutil
+        disk = psutil.disk_usage('/')
+        disk_percent = (disk.used / disk.total) * 100
+        health_status['checks']['disk'] = {
+            'status': 'ok' if disk_percent < 90 else 'warning',
+            'message': f'Espacio en disco: {disk_percent:.1f}% usado',
+            'free_gb': round(disk.free / (1024**3), 2),
+            'total_gb': round(disk.total / (1024**3), 2)
+        }
+        if disk_percent >= 95:
+            health_status['status'] = 'error'
+        elif disk_percent >= 90:
+            health_status['status'] = 'warning'
+    except ImportError:
+        health_status['checks']['disk'] = {
+            'status': 'unknown',
+            'message': 'psutil no instalado'
+        }
+    except Exception as e:
+        health_status['checks']['disk'] = {
+            'status': 'unknown',
+            'message': f'Error: {str(e)}'
+        }
+    
+    # Verificar memoria (opcional, requiere psutil)
+    try:
+        import psutil
+        memory = psutil.virtual_memory()
+        memory_percent = memory.percent
+        health_status['checks']['memory'] = {
+            'status': 'ok' if memory_percent < 90 else 'warning',
+            'message': f'Memoria: {memory_percent:.1f}% usada',
+            'available_gb': round(memory.available / (1024**3), 2),
+            'total_gb': round(memory.total / (1024**3), 2)
+        }
+        if memory_percent >= 95:
+            health_status['status'] = 'error'
+        elif memory_percent >= 90:
+            health_status['status'] = 'warning'
+    except ImportError:
+        health_status['checks']['memory'] = {
+            'status': 'unknown',
+            'message': 'psutil no instalado'
+        }
+    except Exception as e:
+        health_status['checks']['memory'] = {
+            'status': 'unknown',
+            'message': f'Error: {str(e)}'
+        }
+    
+    # Determinar código HTTP
+    http_status = status.HTTP_200_OK
+    if health_status['status'] == 'error':
+        http_status = status.HTTP_503_SERVICE_UNAVAILABLE
+    
+    return Response(health_status, status=http_status)
 
 
 @swagger_auto_schema(
@@ -1085,6 +1170,47 @@ class TelemetriaViewSet(ModelViewSet):
         check_alerts(telemetria)
         
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+    
+    @action(detail=False, methods=['get'])
+    def exportar(self, request):
+        """Exportar telemetría a CSV"""
+        from django.http import HttpResponse
+        import csv
+        
+        queryset = self.get_queryset()
+        
+        # Limitar a 10000 registros para evitar problemas de memoria
+        if queryset.count() > 10000:
+            queryset = queryset[:10000]
+        
+        # Crear respuesta CSV
+        response = HttpResponse(content_type='text/csv; charset=utf-8')
+        response['Content-Disposition'] = 'attachment; filename="telemetria_export.csv"'
+        
+        writer = csv.writer(response)
+        writer.writerow([
+            'ID', 'Cruce', 'Fecha', 'Voltaje Barrera (V)', 'Voltaje Batería (V)',
+            'Sensor 1', 'Sensor 2', 'Sensor 3', 'Sensor 4',
+            'Estado Barrera', 'Señal WiFi (dBm)', 'Temperatura (°C)'
+        ])
+        
+        for telemetria in queryset:
+            writer.writerow([
+                telemetria.id,
+                telemetria.cruce.nombre,
+                telemetria.timestamp.isoformat(),
+                telemetria.barrier_voltage,
+                telemetria.battery_voltage,
+                telemetria.sensor_1 or '',
+                telemetria.sensor_2 or '',
+                telemetria.sensor_3 or '',
+                telemetria.sensor_4 or '',
+                telemetria.barrier_status or '',
+                telemetria.signal_strength or '',
+                telemetria.temperature or ''
+            ])
+        
+        return response
 
 
 class BarrierEventViewSet(ModelViewSet):
@@ -1122,6 +1248,38 @@ class AlertaViewSet(ModelViewSet):
     queryset = Alerta.objects.all()
     serializer_class = AlertaSerializer
     permission_classes = [IsAuthenticated, CanModifyAlertas]
+    
+    @action(detail=False, methods=['get'])
+    def exportar(self, request):
+        """Exportar alertas a CSV"""
+        from django.http import HttpResponse
+        import csv
+        
+        queryset = self.get_queryset()
+        
+        # Crear respuesta CSV
+        response = HttpResponse(content_type='text/csv; charset=utf-8')
+        response['Content-Disposition'] = 'attachment; filename="alertas_export.csv"'
+        
+        writer = csv.writer(response)
+        writer.writerow([
+            'ID', 'Tipo', 'Severidad', 'Cruce', 'Descripción',
+            'Resuelta', 'Fecha Creación', 'Fecha Resolución'
+        ])
+        
+        for alerta in queryset:
+            writer.writerow([
+                alerta.id,
+                alerta.get_type_display(),
+                alerta.get_severity_display(),
+                alerta.cruce.nombre,
+                alerta.description,
+                'Sí' if alerta.resolved else 'No',
+                alerta.created_at.isoformat(),
+                alerta.resolved_at.isoformat() if alerta.resolved_at else ''
+            ])
+        
+        return response
 
     def get_queryset(self):
         queryset = Alerta.objects.all()
@@ -1197,3 +1355,387 @@ class AlertaViewSet(ModelViewSet):
         
         serializer.save()
         return Response(serializer.data)
+
+
+
+# ViewSets para Gestión de Usuarios
+
+class UserViewSet(ModelViewSet):
+	"""ViewSet para gestión completa de usuarios (solo administradores)"""
+	queryset = User.objects.all().select_related('profile')
+	serializer_class = UserManagementSerializer
+	permission_classes = [IsAuthenticated, IsAdmin]
+
+	def get_queryset(self):
+		"""Obtener lista de usuarios con filtros opcionales"""
+		queryset = User.objects.all().select_related('profile').order_by('-date_joined')
+
+		# Filtro por rol
+		role = self.request.query_params.get('role', None)
+		if role:
+			queryset = queryset.filter(profile__role=role)
+
+		# Filtro por estado activo
+		is_active = self.request.query_params.get('is_active', None)
+		if is_active is not None:
+			is_active_bool = is_active.lower() == 'true'
+			queryset = queryset.filter(is_active=is_active_bool)
+
+		# Filtro por búsqueda (email, username, nombre)
+		search = self.request.query_params.get('search', None)
+		if search:
+			queryset = queryset.filter(
+				Q(email__icontains=search) |
+				Q(username__icontains=search) |
+				Q(first_name__icontains=search) |
+				Q(last_name__icontains=search)
+			)
+
+		return queryset
+
+	def get_serializer_class(self):
+		"""Usar serializer diferente para update parcial"""
+		if self.action == 'partial_update':
+			return UserUpdateSerializer
+		return UserManagementSerializer
+
+	def retrieve(self, request, *args, **kwargs):
+		"""Obtener detalles de un usuario"""
+		instance = self.get_object()
+		serializer = self.get_serializer(instance)
+		return Response({
+			'user': serializer.data,
+			'message': 'Usuario obtenido exitosamente'
+		})
+
+	def update(self, request, *args, **kwargs):
+		"""Actualizar usuario completo"""
+		partial = kwargs.pop('partial', False)
+		instance = self.get_object()
+		serializer = self.get_serializer(instance, data=request.data, partial=partial)
+
+		if serializer.is_valid():
+			user = serializer.save()
+
+			# Log de actualización
+			log_security_event(
+				'USER_UPDATED',
+				f'Usuario actualizado: {user.username} (ID: {user.id})',
+				request=request,
+				user=request.user,
+				updated_user_id=user.id,
+				severity='INFO'
+			)
+
+			return Response({
+				'user': UserManagementSerializer(user).data,
+				'message': 'Usuario actualizado exitosamente'
+			})
+
+		return Response({
+			'error': 'Datos inválidos',
+			'details': serializer.errors
+		}, status=status.HTTP_400_BAD_REQUEST)
+
+	def destroy(self, request, *args, **kwargs):
+		"""Eliminar usuario (soft delete - desactivar)"""
+		instance = self.get_object()
+
+		# No permitir auto-eliminación
+		if instance.id == request.user.id:
+			return Response({
+				'error': 'No puedes eliminar tu propio usuario'
+			}, status=status.HTTP_400_BAD_REQUEST)
+
+		# Soft delete: desactivar en lugar de eliminar
+		username = instance.username
+		user_id = instance.id
+		instance.is_active = False
+		instance.save()
+
+		# Log de desactivación
+		log_security_event(
+			'USER_DEACTIVATED',
+			f'Usuario desactivado: {username} (ID: {user_id})',
+			request=request,
+			user=request.user,
+			deactivated_user_id=user_id,
+			severity='WARNING'
+		)
+
+		return Response({
+			'message': f'Usuario {username} desactivado exitosamente',
+			'user_id': user_id
+		}, status=status.HTTP_200_OK)
+
+	@action(detail=True, methods=['post'])
+	def activate(self, request, pk=None):
+		"""Activar usuario desactivado"""
+		user = self.get_object()
+
+		if user.is_active:
+			return Response({
+				'error': 'El usuario ya está activo'
+			}, status=status.HTTP_400_BAD_REQUEST)
+
+		user.is_active = True
+		user.save()
+
+		log_security_event(
+			'USER_ACTIVATED',
+			f'Usuario activado: {user.username} (ID: {user.id})',
+			request=request,
+			user=request.user,
+			activated_user_id=user.id,
+			severity='INFO'
+		)
+
+		return Response({
+			'message': f'Usuario {user.username} activado exitosamente',
+			'user': UserManagementSerializer(user).data
+		})
+
+	@action(detail=True, methods=['post'])
+	def change_role(self, request, pk=None):
+		"""Cambiar rol de usuario"""
+		user = self.get_object()
+		new_role = request.data.get('role')
+
+		if not new_role:
+			return Response({
+				'error': 'El campo "role" es requerido'
+			}, status=status.HTTP_400_BAD_REQUEST)
+
+		# Validar que el rol sea válido
+		valid_roles = [choice[0] for choice in UserProfile.ROLE_CHOICES]
+		if new_role not in valid_roles:
+			return Response({
+				'error': f'Rol inválido. Roles válidos: {", ".join(valid_roles)}'
+			}, status=status.HTTP_400_BAD_REQUEST)
+
+		# Validar que solo admin puede crear otros admin
+		if new_role == 'ADMIN' and not request.user.profile.is_admin():
+			return Response({
+				'error': 'Solo administradores pueden asignar rol de administrador'
+			}, status=status.HTTP_403_FORBIDDEN)
+
+		# Actualizar rol
+		try:
+			profile = user.profile
+			old_role = profile.role
+			profile.role = new_role
+			profile.save()
+		except UserProfile.DoesNotExist:
+			UserProfile.objects.create(user=user, role=new_role)
+			old_role = None
+
+		log_security_event(
+			'USER_ROLE_CHANGED',
+			f'Rol de usuario cambiado: {user.username} de {old_role} a {new_role}',
+			request=request,
+			user=request.user,
+			target_user_id=user.id,
+			old_role=old_role,
+			new_role=new_role,
+			severity='INFO'
+		)
+
+		return Response({
+			'message': f'Rol de {user.username} cambiado de {old_role} a {new_role}',
+			'user': UserManagementSerializer(user).data
+		})
+
+	@action(detail=False, methods=['get'])
+	def roles(self, request):
+		"""Obtener lista de roles disponibles"""
+		roles = [
+			{
+				'value': choice[0],
+				'label': choice[1]
+			}
+			for choice in UserProfile.ROLE_CHOICES
+		]
+		return Response({
+			'roles': roles,
+			'message': 'Roles disponibles obtenidos exitosamente'
+		})
+
+
+# ViewSets para Mantenimiento Preventivo
+
+class MantenimientoPreventivoViewSet(ModelViewSet):
+	"""ViewSet para gestión de reglas de mantenimiento preventivo"""
+	queryset = MantenimientoPreventivo.objects.all()
+	serializer_class = MantenimientoPreventivoSerializer
+	permission_classes = [IsAuthenticated, IsAdmin]
+	
+	def get_queryset(self):
+		"""Filtrar reglas por cruce o estado activo"""
+		queryset = MantenimientoPreventivo.objects.all()
+		
+		cruce_id = self.request.query_params.get('cruce', None)
+		if cruce_id:
+			queryset = queryset.filter(Q(cruce_id=cruce_id) | Q(cruce__isnull=True))
+		
+		activo = self.request.query_params.get('activo', None)
+		if activo is not None:
+			activo_bool = activo.lower() == 'true'
+			queryset = queryset.filter(activo=activo_bool)
+		
+		return queryset.order_by('-prioridad', 'nombre')
+
+
+class HistorialMantenimientoViewSet(ModelViewSet):
+	"""ViewSet para gestión de historial de mantenimientos"""
+	queryset = HistorialMantenimiento.objects.all()
+	serializer_class = HistorialMantenimientoSerializer
+	permission_classes = [IsAuthenticated, IsObserverOrAbove]
+	
+	def get_queryset(self):
+		"""Filtrar mantenimientos por cruce, estado o fecha"""
+		queryset = HistorialMantenimiento.objects.all()
+		
+		cruce_id = self.request.query_params.get('cruce', None)
+		if cruce_id:
+			queryset = queryset.filter(cruce_id=cruce_id)
+		
+		estado = self.request.query_params.get('estado', None)
+		if estado:
+			queryset = queryset.filter(estado=estado)
+		
+		fecha_desde = self.request.query_params.get('fecha_desde', None)
+		if fecha_desde:
+			queryset = queryset.filter(fecha_programada__gte=fecha_desde)
+		
+		fecha_hasta = self.request.query_params.get('fecha_hasta', None)
+		if fecha_hasta:
+			queryset = queryset.filter(fecha_programada__lte=fecha_hasta)
+		
+		return queryset.order_by('-fecha_programada')
+	
+	def get_permissions(self):
+		"""Solo admin puede crear/modificar/eliminar mantenimientos"""
+		if self.action in ['create', 'update', 'partial_update', 'destroy']:
+			return [IsAuthenticated(), IsAdmin()]
+		return [IsAuthenticated(), IsObserverOrAbove()]
+	
+	@action(detail=True, methods=['post'])
+	def iniciar(self, request, pk=None):
+		"""Iniciar un mantenimiento programado"""
+		mantenimiento = self.get_object()
+		
+		if mantenimiento.estado != 'PENDIENTE':
+			return Response({
+				'error': f'El mantenimiento ya está {mantenimiento.get_estado_display()}'
+			}, status=status.HTTP_400_BAD_REQUEST)
+		
+		mantenimiento.estado = 'EN_PROCESO'
+		mantenimiento.fecha_inicio = timezone.now()
+		mantenimiento.responsable = request.data.get('responsable', mantenimiento.responsable)
+		mantenimiento.save()
+		
+		return Response({
+			'message': 'Mantenimiento iniciado',
+			'mantenimiento': HistorialMantenimientoSerializer(mantenimiento).data
+		})
+	
+	@action(detail=True, methods=['post'])
+	def completar(self, request, pk=None):
+		"""Completar un mantenimiento"""
+		mantenimiento = self.get_object()
+		
+		if mantenimiento.estado not in ['EN_PROCESO', 'PENDIENTE']:
+			return Response({
+				'error': f'No se puede completar un mantenimiento {mantenimiento.get_estado_display()}'
+			}, status=status.HTTP_400_BAD_REQUEST)
+		
+		# Obtener métricas después del mantenimiento
+		ultima_telemetria = Telemetria.objects.filter(
+			cruce=mantenimiento.cruce
+		).order_by('-timestamp').first()
+		
+		metricas_despues = {}
+		if ultima_telemetria:
+			metricas_despues = {
+				'battery_voltage': ultima_telemetria.battery_voltage,
+				'barrier_voltage': ultima_telemetria.barrier_voltage,
+				'barrier_status': ultima_telemetria.barrier_status,
+				'signal_strength': ultima_telemetria.signal_strength,
+				'temperature': ultima_telemetria.temperature,
+				'timestamp': ultima_telemetria.timestamp.isoformat(),
+			}
+		
+		mantenimiento.estado = 'COMPLETADO'
+		mantenimiento.fecha_fin = timezone.now()
+		mantenimiento.observaciones = request.data.get('observaciones', mantenimiento.observaciones)
+		mantenimiento.metricas_despues = metricas_despues
+		mantenimiento.save()
+		
+		return Response({
+			'message': 'Mantenimiento completado',
+			'mantenimiento': HistorialMantenimientoSerializer(mantenimiento).data
+		})
+
+
+class MetricasDesempenoViewSet(ModelViewSet):
+	"""ViewSet para métricas de desempeño"""
+	queryset = MetricasDesempeno.objects.all()
+	serializer_class = MetricasDesempenoSerializer
+	permission_classes = [IsAuthenticated, IsObserverOrAbove]
+	
+	def get_queryset(self):
+		"""Filtrar métricas por cruce o fecha"""
+		queryset = MetricasDesempeno.objects.all()
+		
+		cruce_id = self.request.query_params.get('cruce', None)
+		if cruce_id:
+			queryset = queryset.filter(cruce_id=cruce_id)
+		
+		fecha_desde = self.request.query_params.get('fecha_desde', None)
+		if fecha_desde:
+			queryset = queryset.filter(fecha__gte=fecha_desde)
+		
+		fecha_hasta = self.request.query_params.get('fecha_hasta', None)
+		if fecha_hasta:
+			queryset = queryset.filter(fecha__lte=fecha_hasta)
+		
+		return queryset.order_by('-fecha', 'cruce')
+	
+	def get_permissions(self):
+		"""Solo admin puede crear/modificar métricas"""
+		if self.action in ['create', 'update', 'partial_update', 'destroy']:
+			return [IsAuthenticated(), IsAdmin()]
+		return [IsAuthenticated(), IsObserverOrAbove()]
+	
+	@action(detail=False, methods=['get'])
+	def resumen(self, request):
+		"""Obtener resumen de métricas"""
+		cruce_id = request.query_params.get('cruce', None)
+		fecha_desde = request.query_params.get('fecha_desde', None)
+		fecha_hasta = request.query_params.get('fecha_hasta', None)
+		
+		queryset = self.get_queryset()
+		
+		if fecha_desde:
+			queryset = queryset.filter(fecha__gte=fecha_desde)
+		if fecha_hasta:
+			queryset = queryset.filter(fecha__lte=fecha_hasta)
+		
+		# Calcular promedios
+		from django.db.models import Avg, Sum, Count
+		
+		resumen = queryset.aggregate(
+			disponibilidad_promedio=Avg('disponibilidad_porcentaje'),
+			total_mantenimientos=Sum('mantenimientos_realizados'),
+			total_alertas=Sum('total_alertas'),
+			total_eventos=Sum('total_eventos_barrera'),
+			horas_bateria_baja_total=Sum('horas_bateria_baja'),
+		)
+		
+		return Response({
+			'resumen': resumen,
+			'periodo': {
+				'fecha_desde': fecha_desde,
+				'fecha_hasta': fecha_hasta,
+			}
+		})

@@ -1,3 +1,4 @@
 from django.test import TestCase
 
-# Create your tests here.
+# Los tests están en apps/api/tests/test_views.py
+# Ejecutar con: python manage.py test apps.api.tests

@@ -20,7 +20,7 @@ class Command(BaseCommand):
             }
         )
         if created:
-            admin_user.set_password('admin123')
+            admin_user.set_password('Admin123456!')
             admin_user.is_staff = True  # ← IMPORTANTE: Para acceder a Django Admin
             admin_user.is_superuser = True  # ← IMPORTANTE: Para permisos de admin
             admin_user.save()
@@ -37,7 +37,7 @@ class Command(BaseCommand):
                     f'✅ ADMINISTRADOR creado:\n'
                     f'   Username: admin\n'
                     f'   Email: admin@test.com\n'
-                    f'   Password: admin123\n'
+                    f'   Password: Admin123456!\n'
                     f'   Rol: ADMIN\n'
                     f'   ✅ Puede acceder a Django Admin'
                 )
@@ -78,7 +78,7 @@ class Command(BaseCommand):
             }
         )
         if created:
-            maint_user.set_password('maint123')
+            maint_user.set_password('Maint123456!')
             maint_user.save()
             profile, profile_created = UserProfile.objects.get_or_create(
                 user=maint_user,
@@ -90,8 +90,9 @@ class Command(BaseCommand):
             self.stdout.write(
                 self.style.SUCCESS(
                     f'✅ MANTENIMIENTO creado:\n'
+                    f'   Username: mantenimiento\n'
                     f'   Email: mantenimiento@test.com\n'
-                    f'   Password: maint123\n'
+                    f'   Password: Maint123456!\n'
                     f'   Rol: MAINTENANCE'
                 )
             )
@@ -125,7 +126,7 @@ class Command(BaseCommand):
             }
         )
         if created:
-            obs_user.set_password('obs123')
+            obs_user.set_password('Obs123456!')
             obs_user.save()
             profile, profile_created = UserProfile.objects.get_or_create(
                 user=obs_user,
@@ -137,8 +138,9 @@ class Command(BaseCommand):
             self.stdout.write(
                 self.style.SUCCESS(
                     f'✅ OBSERVADOR creado:\n'
+                    f'   Username: observador\n'
                     f'   Email: observador@test.com\n'
-                    f'   Password: obs123\n'
+                    f'   Password: Obs123456!\n'
                     f'   Rol: OBSERVER'
                 )
             )
@@ -162,10 +164,37 @@ class Command(BaseCommand):
                     )
                 )
 
+        separator = '='*70
         self.stdout.write(
             self.style.SUCCESS(
-                '\n✅ Usuarios de prueba creados exitosamente!\n'
-                'Puedes usar estos usuarios para probar el login y roles.'
+                f'\n{separator}\n'
+                f'✅ USUARIOS DE PRUEBA CREADOS EXITOSAMENTE!\n'
+                f'{separator}\n'
+                f'\n📋 RESUMEN DE USUARIOS:\n'
+                f'\n1. ADMINISTRADOR:'
+                f'\n   - Email: admin@test.com'
+                f'\n   - Password: Admin123456!'
+                f'\n   - Rol: ADMIN'
+                f'\n   - Permisos: Acceso completo al sistema'
+                f'\n'
+                f'\n2. MANTENIMIENTO:'
+                f'\n   - Email: mantenimiento@test.com'
+                f'\n   - Password: Maint123456!'
+                f'\n   - Rol: MAINTENANCE'
+                f'\n   - Permisos: Gestionar cruces y alertas'
+                f'\n'
+                f'\n3. OBSERVADOR:'
+                f'\n   - Email: observador@test.com'
+                f'\n   - Password: Obs123456!'
+                f'\n   - Rol: OBSERVER'
+                f'\n   - Permisos: Solo lectura'
+                f'\n'
+                f'\n💡 Puedes usar estos usuarios para probar:'
+                f'\n   - Login en /api/login'
+                f'\n   - Gestión de usuarios (solo admin)'
+                f'\n   - Permisos por rol'
+                f'\n   - Django Admin (solo admin)'
+                f'\n{separator}'
             )
         )
 
