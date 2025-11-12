@@ -5,6 +5,8 @@ from rest_framework import permissions
 from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
 from rest_framework_simplejwt.views import TokenRefreshView, TokenVerifyView
+from rest_framework_simplejwt.authentication import JWTAuthentication
+from rest_framework.authentication import SessionAuthentication, BasicAuthentication
 from django.conf import settings
 
 # Configuración de Swagger
@@ -12,6 +14,11 @@ from django.conf import settings
 # No importa si DEBUG=True o False, Swagger debe estar protegido
 swagger_permission_classes = (permissions.IsAuthenticated,)
 swagger_public = False
+swagger_authentication_classes = (
+    JWTAuthentication,
+    SessionAuthentication,
+    BasicAuthentication,
+)
 
 schema_view = get_schema_view(
     openapi.Info(
@@ -24,6 +31,7 @@ schema_view = get_schema_view(
     ),
     public=swagger_public,
     permission_classes=swagger_permission_classes,
+    authentication_classes=swagger_authentication_classes,
 )
 
 def root_view(request):
