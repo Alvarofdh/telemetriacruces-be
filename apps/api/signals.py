@@ -61,6 +61,9 @@ def alerta_created_or_updated(sender, instance, created, **kwargs):
 	Emitir evento Socket.IO cuando se crea o resuelve una alerta
 	Y enviar email si está configurado
 	"""
+	import logging
+	logger = logging.getLogger(__name__)
+	
 	if created:
 		try:
 			emit_alerta(instance)
@@ -73,8 +76,6 @@ def alerta_created_or_updated(sender, instance, created, **kwargs):
 				except Exception as e:
 					logger.warning(f"Error al enviar email de alerta: {str(e)}")
 		except Exception as e:
-			import logging
-			logger = logging.getLogger(__name__)
 			logger.error(f"Error al emitir alerta: {str(e)}")
 	else:
 		# Si se actualizó y se resolvió
@@ -82,8 +83,6 @@ def alerta_created_or_updated(sender, instance, created, **kwargs):
 			try:
 				emit_alerta_resuelta(instance)
 			except Exception as e:
-				import logging
-				logger = logging.getLogger(__name__)
 				logger.error(f"Error al emitir alerta resuelta: {str(e)}")
 
 

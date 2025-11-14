@@ -28,7 +28,7 @@ if not SECRET_KEY:
 	else:
 		raise ValueError('SECRET_KEY debe estar configurada en variables de entorno para producción')
 
-ALLOWED_HOSTS = ['viametrica-be.psicosiodev.me','fe.psicosiodev.me','localhost','127.0.0.1']
+ALLOWED_HOSTS = ['viametrica-be.psicosiodev.me','fe.psicosiodev.me','localhost','127.0.0.1','admin.socket.io']
 
 # Configuración de URLs
 APPEND_SLASH = True  # Agrega automáticamente / al final de URLs
@@ -220,6 +220,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:8000",
     "https://viametrica-be.psicosiodev.me",
     "https://fe.psicosiodev.me",
+    "https://admin.socket.io",
 ]
 
 CORS_ALLOW_CREDENTIALS = True
@@ -253,6 +254,7 @@ CSRF_TRUSTED_ORIGINS = [
     "http://127.0.0.1:3000",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+    "http://admin.socket.io",
 ]
 
 # Configuración de cookies para funcionar correctamente con HTTPS/HTTP

@@ -44,6 +44,7 @@ if settings.DEBUG:
 		'http://127.0.0.1:8080',
 		'http://localhost:5173',  # Vite
 		'http://127.0.0.1:5173',
+		'https://admin.socket.io',  # Socket.IO Admin UI
 		'null',  # Para file:// (aunque no es ideal, permite polling)
 	]
 	for origin in localhost_origins:
@@ -67,6 +68,18 @@ sio = socketio.AsyncServer(
 # Aplicación ASGI
 socketio_app = socketio.ASGIApp(sio, socketio_path='socket.io')
 
+# Configurar interfaz de administración (solo en desarrollo)
+if settings.DEBUG:
+	try:
+		from .socketio_admin import setup_admin_namespace, register_admin_events
+		setup_admin_namespace(sio)
+		register_admin_events(sio)  # Registrar los eventos del namespace /admin
+		logger.info("✅ Socket.IO Admin UI habilitado (modo desarrollo)")
+	except Exception as e:
+		logger.warning(f"⚠️ No se pudo configurar Admin UI: {str(e)}")
+		import traceback
+		traceback.print_exc()
+
 
 # Rate limiting: máximo de conexiones por IP (desde settings)
 MAX_CONNECTIONS_PER_IP = getattr(settings, 'SOCKETIO_MAX_CONNECTIONS_PER_IP', 5)
@@ -85,10 +98,9 @@ def get_client_ip(environ):
 	return ip
 
 
-# Función síncrona para rate limiting (usada con sync_to_async)
+# Función síncrona para verificar rate limiting SIN incrementar (usada con sync_to_async)
 def _check_rate_limit_sync(client_ip):
-	"""Verificar rate limiting por IP (versión síncrona)"""
-	# Verificar conexiones simultáneas por IP
+	"""Verificar rate limiting por IP sin incrementar (versión síncrona)"""
 	connections_key = f'socketio_connections_{client_ip}'
 	current_connections = cache.get(connections_key, 0)
 	
@@ -96,22 +108,66 @@ def _check_rate_limit_sync(client_ip):
 		logger.warning(f"Rate limit excedido para IP {client_ip}: {current_connections} conexiones")
 		return False
 	
-	# Incrementar contador de conexiones
+	return True
+
+
+# Versión asíncrona usando sync_to_async
+check_rate_limit_async = sync_to_async(_check_rate_limit_sync)
+
+
+# Función síncrona para incrementar contador de conexiones
+def _increment_connection_count_sync(client_ip):
+	"""Incrementar contador de conexiones por IP (versión síncrona)"""
+	connections_key = f'socketio_connections_{client_ip}'
+	current_connections = cache.get(connections_key, 0)
 	cache.set(connections_key, current_connections + 1, timeout=RATE_LIMIT_WINDOW)
-	
-	# Verificar eventos por minuto
+	return True
+
+
+# Versión asíncrona usando sync_to_async
+increment_connection_count_async = sync_to_async(_increment_connection_count_sync)
+
+
+# Función síncrona para decrementar contador de conexiones
+def _decrement_connection_count_sync(client_ip):
+	"""Decrementar contador de conexiones por IP (versión síncrona)"""
+	connections_key = f'socketio_connections_{client_ip}'
+	current_connections = cache.get(connections_key, 0)
+	if current_connections > 0:
+		cache.set(connections_key, current_connections - 1, timeout=RATE_LIMIT_WINDOW)
+	return True
+
+
+# Versión asíncrona usando sync_to_async
+decrement_connection_count_async = sync_to_async(_decrement_connection_count_sync)
+
+
+# Función síncrona para incrementar contador de eventos
+def _increment_event_count_sync(client_ip):
+	"""Incrementar contador de eventos por IP (versión síncrona)"""
 	events_key = f'socketio_events_{client_ip}'
-	event_count = cache.get(events_key, 0)
+	try:
+		# Intentar incrementar el contador existente
+		event_count = cache.incr(events_key)
+		# Si no existe, crear con valor inicial 1
+		if event_count is None:
+			cache.set(events_key, 1, timeout=60)  # 60 segundos = 1 minuto
+			event_count = 1
+	except (ValueError, TypeError):
+		# Si falla, crear con valor inicial 1
+		cache.set(events_key, 1, timeout=60)
+		event_count = 1
 	
-	if event_count >= MAX_EVENTS_PER_MINUTE:
-		logger.warning(f"Rate limit de eventos excedido para IP {client_ip}")
+	# Verificar si se excedió el límite
+	if event_count > MAX_EVENTS_PER_MINUTE:
+		logger.warning(f"Rate limit de eventos excedido para IP {client_ip}: {event_count} eventos/min")
 		return False
 	
 	return True
 
 
 # Versión asíncrona usando sync_to_async
-check_rate_limit_async = sync_to_async(_check_rate_limit_sync)
+increment_event_count_async = sync_to_async(_increment_event_count_sync)
 
 
 # Función síncrona para autenticar (usada con sync_to_async)
@@ -171,7 +227,7 @@ async def connect(sid, environ, auth):
 			logger.debug(f"   Transport: {environ.get('HTTP_UPGRADE', 'polling')}")
 			logger.debug(f"   Origin: {environ.get('HTTP_ORIGIN', 'unknown')}")
 		
-		# Verificar rate limiting (ahora es async)
+		# Verificar rate limiting SIN incrementar (solo verificar)
 		if not await check_rate_limit_async(client_ip):
 			logger.warning(f"❌ Conexión rechazada por rate limit: {sid} (IP: {client_ip})")
 			await sio.disconnect(sid)
@@ -192,12 +248,15 @@ async def connect(sid, environ, auth):
 			await sio.disconnect(sid)
 			return False
 		
-		# Guardar información del usuario en la sesión
+		# ✅ SOLO incrementar contador DESPUÉS de autenticación exitosa
+		await increment_connection_count_async(client_ip)
+		
+		# Guardar información del usuario en la sesión (incluyendo IP para poder decrementar)
 		await sio.save_session(sid, {
 			'user_id': user.id,
 			'username': user.username,
 			'email': user.email,
-			'ip': get_client_ip(environ),
+			'ip': client_ip,  # Guardar IP para poder decrementar en disconnect
 			'connected_at': time.time(),
 		})
 		
@@ -232,17 +291,23 @@ async def connect(sid, environ, auth):
 async def disconnect(sid, reason=None):
 	"""Manejar desconexión de cliente"""
 	try:
-		session = await sio.get_session(sid)
-		user_id = session.get('user_id')
-		username = session.get('username', 'unknown')
+		# Intentar obtener sesión (puede no existir si la conexión fue rechazada antes de autenticar)
+		try:
+			session = await sio.get_session(sid)
+			user_id = session.get('user_id')
+			username = session.get('username', 'unknown')
+			ip = session.get('ip', 'unknown')
+		except:
+			# Si no hay sesión, no podemos obtener información del usuario
+			# pero aún debemos intentar decrementar el contador si tenemos la IP
+			# Nota: En este caso, no tenemos la IP guardada, así que no podemos decrementar
+			# Esto es aceptable porque si no hay sesión, significa que nunca se incrementó
+			logger.info(f"Cliente desconectado sin sesión: {sid} (Razón: {reason})")
+			return
 		
-		# Decrementar contador de conexiones
-		ip = session.get('ip', 'unknown')
+		# Decrementar contador de conexiones si tenemos la IP
 		if ip != 'unknown':
-			connections_key = f'socketio_connections_{ip}'
-			current_connections = cache.get(connections_key, 0)
-			if current_connections > 0:
-				cache.set(connections_key, current_connections - 1, timeout=RATE_LIMIT_WINDOW)
+			await decrement_connection_count_async(ip)
 		
 		reason_msg = f" - Razón: {reason}" if reason else ""
 		logger.info(f"Cliente desconectado: {username} (ID: {user_id}, Socket: {sid}){reason_msg}")
@@ -263,7 +328,16 @@ async def subscribe(sid, data):
 	- cruce_{id}: Eventos de un cruce específico
 	"""
 	try:
+		# Verificar e incrementar rate limit de eventos
 		session = await sio.get_session(sid)
+		client_ip = session.get('ip', 'unknown')
+		if client_ip != 'unknown':
+			if not await increment_event_count_async(client_ip):
+				await sio.emit('error', {
+					'message': 'Rate limit de eventos excedido. Intenta más tarde.'
+				}, room=sid)
+				return
+		
 		user_id = session.get('user_id')
 		
 		if not data or 'events' not in data:
@@ -314,7 +388,16 @@ async def join_room(sid, data):
 	Formato: { room: 'nombre_sala' }
 	"""
 	try:
+		# Verificar e incrementar rate limit de eventos
 		session = await sio.get_session(sid)
+		client_ip = session.get('ip', 'unknown')
+		if client_ip != 'unknown':
+			if not await increment_event_count_async(client_ip):
+				await sio.emit('error', {
+					'message': 'Rate limit de eventos excedido. Intenta más tarde.'
+				}, room=sid)
+				return
+		
 		user_id = session.get('user_id')
 		
 		if not data or 'room' not in data:
@@ -348,7 +431,16 @@ async def leave_room(sid, data):
 	Formato: { room: 'nombre_sala' }
 	"""
 	try:
+		# Verificar e incrementar rate limit de eventos
 		session = await sio.get_session(sid)
+		client_ip = session.get('ip', 'unknown')
+		if client_ip != 'unknown':
+			if not await increment_event_count_async(client_ip):
+				await sio.emit('error', {
+					'message': 'Rate limit de eventos excedido. Intenta más tarde.'
+				}, room=sid)
+				return
+		
 		user_id = session.get('user_id')
 		
 		if not data or 'room' not in data:
@@ -375,7 +467,16 @@ async def leave_room(sid, data):
 async def unsubscribe(sid, data):
 	"""Desuscribirse de eventos"""
 	try:
+		# Verificar e incrementar rate limit de eventos
 		session = await sio.get_session(sid)
+		client_ip = session.get('ip', 'unknown')
+		if client_ip != 'unknown':
+			if not await increment_event_count_async(client_ip):
+				await sio.emit('error', {
+					'message': 'Rate limit de eventos excedido. Intenta más tarde.'
+				}, room=sid)
+				return
+		
 		user_id = session.get('user_id')
 		
 		if not data or 'events' not in data:
@@ -409,7 +510,13 @@ async def unsubscribe(sid, data):
 async def ping(sid):
 	"""Manejar ping del cliente (health check)"""
 	try:
+		# Verificar e incrementar rate limit de eventos
 		session = await sio.get_session(sid)
+		client_ip = session.get('ip', 'unknown')
+		if client_ip != 'unknown':
+			if not await increment_event_count_async(client_ip):
+				# Para ping, no emitimos error, solo ignoramos
+				return
 		await sio.emit('pong', {
 			'timestamp': time.time(),
 			'status': 'ok'
@@ -418,16 +525,28 @@ async def ping(sid):
 		logger.error(f"Error en ping: {str(e)}")
 
 
-@sio.event
+@sio.on('*')
 async def catch_all(event, sid, data):
 	"""
 	Manejar eventos no reconocidos (catch-all handler).
+	
+	El decorador @sio.on('*') captura TODOS los eventos que no tienen
+	un handler específico registrado.
 	
 	Útil para debugging y detectar eventos del frontend que no están implementados.
 	Según documentación: https://python-socketio.readthedocs.io/en/stable/server.html#catch-all-event-handlers
 	"""
 	try:
+		# Verificar e incrementar rate limit de eventos
 		session = await sio.get_session(sid)
+		client_ip = session.get('ip', 'unknown')
+		if client_ip != 'unknown':
+			if not await increment_event_count_async(client_ip):
+				await sio.emit('error', {
+					'message': 'Rate limit de eventos excedido. Intenta más tarde.'
+				}, room=sid)
+				return
+		
 		user_id = session.get('user_id', 'unknown')
 		
 		logger.warning(f"⚠️ Evento no reconocido '{event}' de usuario {user_id} (SID: {sid})")
