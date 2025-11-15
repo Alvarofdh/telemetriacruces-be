@@ -17,13 +17,10 @@ python manage.py migrate --noinput
 echo "Recolectando archivos estáticos..."
 python manage.py collectstatic --noinput --clear
 
-# Iniciar Gunicorn con Uvicorn workers (para ASGI + Socket.IO)
-echo "Iniciando Gunicorn con Uvicorn workers (ASGI + Socket.IO)..."
-exec gunicorn config.asgi:application \
-    --bind 0.0.0.0:8500 \
-    --workers 3 \
-    --worker-class uvicorn.workers.UvicornWorker \
-    --timeout 120 \
-    --access-logfile - \
-    --error-logfile - \
-    --log-level info
+# Iniciar Uvicorn (para ASGI + Socket.IO)
+echo "Iniciando Uvicorn (ASGI + Socket.IO) en puerto 8500..."
+exec uvicorn config.asgi:application \
+    --host 0.0.0.0 \
+    --port 8500 \
+    --log-level info \
+    --access-log
