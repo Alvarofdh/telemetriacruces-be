@@ -7,8 +7,9 @@ set -e
 echo "🚀 Iniciando servidor de PRODUCCIÓN..."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-# Directorio del proyecto
-cd /home/psicosiao/Escritorio/viametrica-be/telemetriacruces-be
+# Directorio del proyecto (usar directorio del script)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 
 # Verificar que DEBUG=False
 if grep -q "DEBUG.*True" .env 2>/dev/null; then

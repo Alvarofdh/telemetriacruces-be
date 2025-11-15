@@ -7,8 +7,9 @@ set -e
 echo "🚀 Iniciando servidor de DESARROLLO..."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-# Directorio del proyecto
-cd /home/psicosiao/Escritorio/viametrica-be/telemetriacruces-be
+# Directorio del proyecto (usar directorio del script)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 
 # Matar procesos anteriores
 echo "🔄 Deteniendo servidores anteriores..."
