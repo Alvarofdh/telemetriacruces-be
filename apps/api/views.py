@@ -14,19 +14,23 @@ def swagger_auto_schema(*args, **kwargs):
     return decorator
 
 class openapi:
-    """Clase dummy para openapi - Swagger deshabilitado"""
-    class Info:
-        pass
-    class Response:
-        pass
-    class Schema:
-        pass
-    class Contact:
-        pass
-    class License:
-        pass
-    TYPE_STRING = 'string'
-    TYPE_OBJECT = 'object'
+	"""Clase dummy para openapi - Swagger deshabilitado"""
+	class Info:
+		pass
+	class Response:
+		def __init__(self, *args, **kwargs):
+			"""Acepta cualquier argumento pero los ignora"""
+			pass
+	class Schema:
+		def __init__(self, *args, **kwargs):
+			"""Acepta cualquier argumento pero los ignora"""
+			pass
+	class Contact:
+		pass
+	class License:
+		pass
+	TYPE_STRING = 'string'
+	TYPE_OBJECT = 'object'
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate, login, logout
 from django.utils import timezone
