@@ -277,19 +277,24 @@ telemetriacruces-be/
 │       ├── serializers.py    # Serializers para API
 │       ├── views.py          # Vistas y endpoints
 │       ├── urls.py           # URLs de la API
-│       └── admin.py          # Configuración admin
+│       ├── admin.py          # Configuración admin
+│       ├── socketio_app.py   # Socket.IO server
+│       └── management/
+│           └── commands/     # Comandos de gestión
 ├── config/
 │   ├── settings.py           # Configuración Django
 │   ├── urls.py              # URLs principales
+│   ├── asgi.py              # ASGI configuration (Socket.IO)
 │   └── wsgi.py              # WSGI configuration
 ├── database/
 │   └── setup_basico.sql      # Scripts de base de datos
 ├── logs/                     # Archivos de log
 ├── requirements.txt          # Dependencias Python
 ├── manage.py                # Script de gestión Django
+├── start_prod.sh            # Script de inicio producción
+├── start_dev.sh             # Script de inicio desarrollo
 └── README.md               # Este archivo
 ```
-<<<<<<< HEAD
 
 ## 🔧 Lógica de Negocio
 
@@ -322,14 +327,16 @@ python manage.py runserver 0.0.0.0:8000
 
 ### Producción
 ```bash
-# Configurar variables de entorno
-export DEBUG=False
-export SECRET_KEY=tu_secret_key_produccion
-export ESP32_TOKEN=token_super_secreto_produccion
+# Configurar variables de entorno en archivo .env
+# DEBUG=False
+# SECRET_KEY=tu_secret_key_produccion
+# ESP32_TOKEN=token_super_secreto_produccion
 
-# Ejecutar con Gunicorn
-gunicorn config.wsgi:application --bind 0.0.0.0:8000
+# Ejecutar script de producción
+./start_prod.sh
 ```
+
+**Nota**: El script `start_prod.sh` usa Gunicorn con Uvicorn workers para soportar Socket.IO en producción.
 
 ## 📚 Documentación API
 
@@ -361,17 +368,15 @@ Este proyecto está bajo la Licencia MIT. Ver el archivo `LICENSE` para más det
 
 ---
 
-## 🎯 Roadmap
+## 🎯 Características Implementadas
 
-- [ ] Implementar WebSockets para tiempo real
-- [ ] Agregar notificaciones push
-- [ ] Implementar rate limiting
-- [ ] Agregar tests unitarios
-- [ ] Configuración de producción con Docker
-- [ ] Dashboard móvil con React Native
+- ✅ WebSockets con Socket.IO para tiempo real
+- ✅ Sistema de notificaciones en tiempo real
+- ✅ Rate limiting implementado
+- ✅ Configuración de producción lista
+- ✅ Sistema de alertas automáticas
+- ✅ Monitoreo 24/7 con actualizaciones en tiempo real
 
 ---
 
 **¡Gracias por usar el Sistema de Monitoreo de Cruces Ferroviarios!** 🚂✨
-=======
->>>>>>> a67ff19a0eac98e8f31b416a5495349d10147df5
