@@ -28,7 +28,7 @@ if not SECRET_KEY:
 	else:
 		raise ValueError('SECRET_KEY debe estar configurada en variables de entorno para producción')
 
-ALLOWED_HOSTS = ['viametrica-be.psicosiodev.me','fe.psicosiodev.me','localhost','127.0.0.1','admin.socket.io']
+ALLOWED_HOSTS = ['viametrica-be.psicosiodev.me','fe.psicosiodev.me','localhost','127.0.0.1','admin.socket.io','192.168.1.141','172.20.10.3']
 
 # Configuración de URLs
 APPEND_SLASH = True  # Agrega automáticamente / al final de URLs
@@ -44,7 +44,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
-    # 'drf_yasg',  # Deshabilitado por seguridad
+    'drf_yasg',  # Swagger habilitado
     'corsheaders',
     'apps.api',
 ]
@@ -222,6 +222,15 @@ CORS_ALLOWED_ORIGINS = [
     "https://viametrica-be.psicosiodev.me",
     "https://fe.psicosiodev.me",
     "https://admin.socket.io",
+    "http://192.168.1.141:8081",
+    "http://192.168.1.141:8082",
+    "http://192.168.1.141:8000",
+    "http://192.168.1.109:8000",
+    "http://192.168.1.109:8081",
+    "http://192.168.1.109:8082",
+    "http://172.20.10.3:8081",
+    "http://172.20.10.3:8082",
+    "http://172.20.10.3:8000",
 ]
 
 CORS_ALLOW_CREDENTIALS = True
@@ -256,6 +265,11 @@ CSRF_TRUSTED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "http://admin.socket.io",
+    "http://192.168.1.141:8081",
+    "http://192.168.1.141:8082",
+    "http://172.20.10.3:8081",
+    "http://172.20.10.3:8082",
+    "http://172.20.10.3:8000",
 ]
 
 # Configuración de cookies para funcionar correctamente con HTTPS/HTTP
@@ -319,6 +333,13 @@ EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', EMAIL_HOST_USER or 'noreply@viametrica.com')
 SERVER_EMAIL = DEFAULT_FROM_EMAIL
+
+# ============================================
+# INTEGRACIÓN N8N
+# ============================================
+N8N_WEBHOOK_URL = os.getenv('N8N_WEBHOOK_URL')
+N8N_WEBHOOK_TIMEOUT = int(os.getenv('N8N_WEBHOOK_TIMEOUT') or '5')
+N8N_WEBHOOK_VERIFY_SSL = os.getenv('N8N_WEBHOOK_VERIFY_SSL', 'True').lower() == 'true'
 
 # ============================================
 # CONFIGURACIÓN DE LOGGING
@@ -483,4 +504,38 @@ RATE_LIMIT_GLOBAL_PER_HOUR = int(os.getenv('RATE_LIMIT_GLOBAL_PER_HOUR', '1000')
 RATE_LIMIT_ENDPOINT_PER_MINUTE = int(os.getenv('RATE_LIMIT_ENDPOINT_PER_MINUTE', '100'))
 
 # Protección contra DoS
+
+# ============================================================================
+# CONFIGURACIÓN DE SWAGGER (drf-yasg)
+# ============================================================================
+SWAGGER_SETTINGS = {
+	'SECURITY_DEFINITIONS': {
+		'Bearer': {
+			'type': 'apiKey',
+			'name': 'Authorization',
+			'in': 'header',
+			'description': 'Token JWT en formato: Bearer <token>'
+		}
+	},
+	'USE_SESSION_AUTH': False,
+	'JSON_EDITOR': True,
+	'SUPPORTED_SUBMIT_METHODS': ['get', 'post', 'put', 'delete', 'patch'],
+	'OPERATIONS_SORTER': 'alpha',
+	'TAGS_SORTER': 'alpha',
+	'DOC_EXPANSION': 'list',  # Expandir todas las operaciones por defecto ('list', 'full', o 'none')
+	'DEEP_LINKING': True,
+	'SHOW_EXTENSIONS': True,
+	'DEFAULT_MODEL_RENDERING': 'example',
+	'VALIDATOR_URL': None,  # Deshabilitar validación externa
+	'DISPLAY_OPERATION_ID': True,  # Mostrar IDs de operación
+	'FILTER': True,  # Habilitar filtro de búsqueda
+	'SHOW_COMMON_EXTENSIONS': True,  # Mostrar extensiones comunes
+}
+
+REDOC_SETTINGS = {
+	'LAZY_RENDERING': True,
+	'HIDE_HOSTNAME': False,
+	'EXPAND_RESPONSES': '200,201',
+	'PATH_IN_MIDDLE': True,
+}
 MAX_REQUESTS_PER_IP_PER_MINUTE = int(os.getenv('MAX_REQUESTS_PER_IP_PER_MINUTE', '60'))

@@ -142,6 +142,11 @@ class MaliciousPatternDetectionMiddleware(MiddlewareMixin):
 	]
 	
 	def process_request(self, request):
+		# Excluir rutas administrativas internas para evitar falsos positivos
+		admin_paths = ['/admin/', '/django-admin/']
+		if any(request.path.startswith(path) for path in admin_paths):
+			return None
+		
 		# Verificar URL
 		path = request.path
 		query_string = request.META.get('QUERY_STRING', '')

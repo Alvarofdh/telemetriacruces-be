@@ -114,11 +114,48 @@ class BarrierEvent(models.Model):
 
 class Cruce(models.Model):
     """Modelo para los cruces ferroviarios"""
+    ESTADO_CHOICES = [
+        ('ACTIVO', 'Activo'),
+        ('MANTENIMIENTO', 'En mantenimiento'),
+        ('INACTIVO', 'Inactivo'),
+    ]
+    
     nombre = models.CharField(max_length=100)
     ubicacion = models.CharField(max_length=200)
     coordenadas_lat = models.FloatField(null=True, blank=True)
     coordenadas_lng = models.FloatField(null=True, blank=True)
-    estado = models.CharField(max_length=20, default='ACTIVO')
+    estado = models.CharField(max_length=20, choices=ESTADO_CHOICES, default='ACTIVO')
+    responsable_nombre = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        verbose_name="Nombre del Responsable"
+    )
+    responsable_telefono = models.CharField(
+        max_length=20,
+        blank=True,
+        null=True,
+        verbose_name="Teléfono del Responsable"
+    )
+    responsable_email = models.EmailField(
+        max_length=254,
+        blank=True,
+        null=True,
+        verbose_name="Email del Responsable"
+    )
+    responsable_empresa = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        verbose_name="Empresa de Mantenimiento"
+    )
+    responsable_horario = models.CharField(
+        max_length=200,
+        blank=True,
+        null=True,
+        verbose_name="Horario de Atención",
+        help_text="Ej: Lunes a Viernes 8:00-18:00"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

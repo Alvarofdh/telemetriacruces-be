@@ -18,9 +18,30 @@ class UserProfileAdmin(admin.ModelAdmin):
 @admin.register(Cruce)
 class CruceAdmin(admin.ModelAdmin):
     """Admin para cruces"""
-    list_display = ('nombre', 'ubicacion', 'estado', 'created_at')
+    list_display = ('nombre', 'ubicacion', 'estado', 'responsable_nombre', 'responsable_telefono', 'created_at')
     list_filter = ('estado', 'created_at')
-    search_fields = ('nombre', 'ubicacion')
+    search_fields = ('nombre', 'ubicacion', 'responsable_nombre', 'responsable_empresa')
+    fieldsets = (
+        ('Información del Cruce', {
+            'fields': ('nombre', 'ubicacion', 'estado')
+        }),
+        ('Coordenadas', {
+            'fields': ('coordenadas_lat', 'coordenadas_lng')
+        }),
+        ('Contacto del Responsable', {
+            'fields': (
+                'responsable_nombre',
+                'responsable_telefono',
+                'responsable_email',
+                'responsable_empresa',
+                'responsable_horario',
+            )
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at')
+        }),
+    )
+    readonly_fields = ('created_at', 'updated_at')
 
 
 @admin.register(Sensor)

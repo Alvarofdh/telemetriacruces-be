@@ -5,36 +5,14 @@ from rest_framework.reverse import reverse
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework import status
 from rest_framework.viewsets import ModelViewSet
-# Swagger deshabilitado por seguridad
-# Funciones dummy para reemplazar decoradores de Swagger
-def swagger_auto_schema(*args, **kwargs):
-    """Decorador dummy - Swagger deshabilitado"""
-    def decorator(func):
-        return func
-    return decorator
-
-class openapi:
-	"""Clase dummy para openapi - Swagger deshabilitado"""
-	class Info:
-		pass
-	class Response:
-		def __init__(self, *args, **kwargs):
-			"""Acepta cualquier argumento pero los ignora"""
-			pass
-	class Schema:
-		def __init__(self, *args, **kwargs):
-			"""Acepta cualquier argumento pero los ignora"""
-			pass
-	class Contact:
-		pass
-	class License:
-		pass
-	TYPE_STRING = 'string'
-	TYPE_OBJECT = 'object'
+# Swagger habilitado
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate, login, logout
 from django.utils import timezone
-from django.db.models import Q
+from django.db import transaction, IntegrityError
+from django.db.models import Q, ProtectedError
 from django.conf import settings
 import logging
 from .serializers import (
@@ -870,6 +848,72 @@ class CruceViewSet(ModelViewSet):
             queryset = queryset.filter(estado=estado)
         return queryset
 
+    def destroy(self, request, *args, **kwargs):
+        """
+        Eliminar un cruce junto con todas sus dependencias directas
+        para evitar errores de integridad referencial en la base de datos.
+        """
+        instance = self.get_object()
+        cruce_id = instance.id
+        cruce_nombre = instance.nombre
+        
+        dependencias = {
+            'sensores': instance.sensores.count(),
+            'telemetrias': instance.telemetrias.count(),
+            'alertas': instance.alertas.count(),
+            'eventos_barrera': instance.barrier_events.count(),
+            'metricas': instance.metricas.count(),
+            'historial_mantenimientos': instance.historial_mantenimientos.count(),
+            'reglas_mantenimiento': instance.reglas_mantenimiento.count(),
+        }
+        
+        try:
+            with transaction.atomic():
+                # Eliminar dependencias en orden para evitar restricciones
+                instance.historial_mantenimientos.all().delete()
+                instance.metricas.all().delete()
+                instance.reglas_mantenimiento.all().delete()
+                instance.barrier_events.all().delete()
+                instance.alertas.all().delete()
+                instance.telemetrias.all().delete()
+                instance.sensores.all().delete()
+                
+                instance.delete()
+        except ProtectedError as exc:
+            logger.error("No se pudo eliminar el cruce %s por dependencias protegidas: %s", cruce_id, str(exc))
+            return Response({
+                'error': 'No se puede eliminar el cruce porque tiene dependencias protegidas',
+                'detalles': str(exc)
+            }, status=status.HTTP_400_BAD_REQUEST)
+        except IntegrityError as exc:
+            logger.error("Error de integridad al eliminar cruce %s: %s", cruce_id, str(exc))
+            return Response({
+                'error': 'Ocurrió un error de integridad al eliminar el cruce',
+                'detalles': str(exc)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except Exception as exc:
+            logger.exception("Error inesperado al eliminar cruce %s", cruce_id)
+            return Response({
+                'error': 'Ocurrió un error inesperado al eliminar el cruce',
+                'detalles': str(exc)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        log_security_event(
+            'CRUCE_DELETED',
+            f'Cruce eliminado: {cruce_nombre} (ID: {cruce_id})',
+            request=request,
+            user=request.user,
+            severity='WARNING',
+            cruce_id=cruce_id,
+            extra={'dependencias_eliminadas': dependencias}
+        )
+        
+        return Response({
+            'message': f'Cruce {cruce_nombre} eliminado correctamente',
+            'cruce_id': cruce_id,
+            'dependencias_eliminadas': dependencias
+        }, status=status.HTTP_200_OK)
+
     def retrieve(self, request, *args, **kwargs):
         """
         Obtener detalles completos de un cruce incluyendo telemetría
@@ -912,6 +956,13 @@ class CruceViewSet(ModelViewSet):
             'coordenadas_lat': instance.coordenadas_lat,
             'coordenadas_lng': instance.coordenadas_lng,
             'estado': instance.estado,
+            'responsable': {
+                'nombre': instance.responsable_nombre,
+                'telefono': instance.responsable_telefono,
+                'email': instance.responsable_email,
+                'empresa': instance.responsable_empresa,
+                'horario': instance.responsable_horario,
+            },
             'created_at': instance.created_at.isoformat(),
             'updated_at': instance.updated_at.isoformat(),
             

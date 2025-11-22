@@ -2,7 +2,7 @@
 Señales para crear automáticamente el perfil de usuario
 y emitir eventos Socket.IO cuando ocurren cambios en el sistema
 """
-from django.db.models.signals import post_save, post_delete
+from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 from django.contrib.auth.models import User
 from .models import UserProfile, Telemetria, BarrierEvent, Alerta, Cruce
@@ -86,6 +86,35 @@ def alerta_created_or_updated(sender, instance, created, **kwargs):
 				logger.error(f"Error al emitir alerta resuelta: {str(e)}")
 
 
+@receiver(pre_save, sender=Cruce)
+def cache_cruce_previous_state(sender, instance, **kwargs):
+	"""
+	Guardar el estado anterior del cruce antes de persistirlo.
+	"""
+	import logging
+	logger = logging.getLogger(__name__)
+	
+	if not instance.pk:
+		instance._estado_before_save = None  # noqa: SLF001
+		logger.debug("Cruce sin ID (nuevo). No hay estado anterior que cachear.")
+		return
+	
+	try:
+		previous = sender.objects.only('estado').get(pk=instance.pk)
+		instance._estado_before_save = previous.estado  # noqa: SLF001
+		logger.debug(
+			"Estado anterior cacheado para cruce %s: %s",
+			instance.pk,
+			previous.estado,
+		)
+	except sender.DoesNotExist:
+		instance._estado_before_save = None  # noqa: SLF001
+		logger.debug(
+			"No se encontró estado anterior para cruce %s. Es posible que sea nuevo.",
+			instance.pk,
+		)
+
+
 @receiver(post_save, sender=Cruce)
 def cruce_created_or_updated(sender, instance, created, **kwargs):
 	"""
@@ -100,6 +129,30 @@ def cruce_created_or_updated(sender, instance, created, **kwargs):
 		
 		# Emitir actualización (tanto para creación como actualización)
 		emit_cruce_update(instance)
+		
+		previous_estado = getattr(instance, '_estado_before_save', None)
+		if (
+			not created
+			and previous_estado == 'ACTIVO'
+			and instance.estado == 'INACTIVO'
+		):
+			logger.info(
+				"🔔 Transición ACTIVO→INACTIVO detectada en cruce %s. Enviando webhook n8n.",
+				instance.id,
+			)
+			try:
+				from .n8n_service import enviar_webhook_estado_cruce
+				enviar_webhook_estado_cruce(
+					cruce=instance,
+					estado_anterior=previous_estado
+				)
+			except Exception as webhook_exc:
+				logger.error(
+					"❌ Error al enviar webhook n8n para cruce %s: %s",
+					instance.id,
+					str(webhook_exc),
+					exc_info=True
+				)
 		
 		if created:
 			logger.info(f"✅ Signal procesado: Cruce {instance.id} creado - evento emitido")

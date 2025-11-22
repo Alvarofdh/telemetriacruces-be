@@ -103,7 +103,7 @@ def log_security_event(event_type, message, request=None, user=None, severity='I
 	"""
 	log_data = {
 		'event_type': event_type,
-		'message': message,
+		'log_message': message,
 		'timestamp': timezone.now().isoformat(),
 		'severity': severity,
 	}
@@ -116,6 +116,11 @@ def log_security_event(event_type, message, request=None, user=None, severity='I
 	if user:
 		log_data['user_id'] = user.id
 		log_data['username'] = user.username
+	
+	reserved_log_keys = {'message'}
+	for reserved_key in reserved_log_keys:
+		if reserved_key in kwargs:
+			log_data[f'extra_{reserved_key}'] = kwargs.pop(reserved_key)
 	
 	log_data.update(kwargs)
 	

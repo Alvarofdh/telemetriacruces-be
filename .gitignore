@@ -145,3 +145,5 @@ backup_*.dump
 
 # Cursor Rules - NO ignorar
 !.cursor-rules/ 
+.cursor/
+.cursor/**

@@ -22,9 +22,11 @@ class SwaggerProtectionMiddleware:
     def __call__(self, request):
         # Verificar si la URL es de Swagger o Redoc
         if request.path.startswith('/swagger') or request.path.startswith('/redoc'):
-            logger.info(f"SwaggerProtectionMiddleware: Bloqueando acceso a {request.path}")
+            # Permitir acceso a Swagger sin autenticación (común en desarrollo)
+            # Los endpoints de la API siguen protegidos por sus propios permisos
+            logger.info(f"SwaggerProtectionMiddleware: Permitiendo acceso a {request.path}")
             
-            # Verificar autenticación
+            # Intentar autenticar si hay token, pero no bloquear si no hay
             user = None
             
             # 1. Verificar sesión de Django (ya procesada por AuthenticationMiddleware)
@@ -56,19 +58,12 @@ class SwaggerProtectionMiddleware:
                 except Exception as e:
                     logger.debug(f"SwaggerProtectionMiddleware: Error en autenticación DRF: {e}")
             
-            # 4. Si NO hay usuario autenticado, BLOQUEAR
-            if not user:
-                logger.warning(f"SwaggerProtectionMiddleware: Acceso denegado a {request.path} - Sin autenticación")
-                return JsonResponse(
-                    {
-                        'error': '403 Forbidden',
-                        'detail': 'Se requiere autenticación para acceder a la documentación de la API.',
-                        'message': 'Por favor, haz login primero en /api/login o incluye tu token JWT en el header: Authorization: Bearer TU_TOKEN'
-                    },
-                    status=403
-                )
-            
-            logger.info(f"SwaggerProtectionMiddleware: Acceso permitido a {request.path} para usuario {user}")
+            # Permitir acceso a Swagger incluso sin autenticación
+            # Los endpoints de la API seguirán protegidos
+            if user:
+                logger.info(f"SwaggerProtectionMiddleware: Acceso permitido a {request.path} para usuario {user}")
+            else:
+                logger.info(f"SwaggerProtectionMiddleware: Acceso permitido a {request.path} (sin autenticación)")
 
         # Continuar con el procesamiento normal
         response = self.get_response(request)
